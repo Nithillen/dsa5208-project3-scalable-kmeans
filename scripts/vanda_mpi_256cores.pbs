@@ -1,0 +1,31 @@
+#!/bin/bash
+#PBS -P dsa5208
+#PBS -j oe
+#PBS -N kmeans_mpi_256
+#PBS -q parallel
+#PBS -l select=4:ncpus=64:mpiprocs=64:ompthreads=1:mem=64gb
+#PBS -l walltime=00:30:00
+
+cd $PBS_O_WORKDIR || exit 1
+
+# Load recommended CUDA-aware OpenMPI + NVHPC module on Vanda (Lecture 12 Slide 40)
+module load nvhpc-hpcx-cuda12/26.1
+
+mkdir -p bin results
+mpicxx -O3 -std=c++17 src/kmeans_mpi.cpp -o bin/kmeans_mpi
+
+echo "=================================================================="
+echo "  Vanda HPC: Pure MPI Strong Scaling (1 to 256 CPU Cores)         "
+echo "=================================================================="
+for P in 1 2 4 8 16 32 64 128 256; do
+    echo "--- Running Strong Scaling on UCI HIGGS with P=$P MPI Ranks ---"
+    mpirun -np $P ./bin/kmeans_mpi -f data/higgs_clean.csv -r results/centroids_serial.txt -k 8 -m 50 -t 0.0
+done
+
+echo "=================================================================="
+echo "  Vanda HPC: Pure MPI Weak Scaling (250,000 pts/core, up to 64M)  "
+echo "=================================================================="
+for P in 1 2 4 8 16 32 64 128 256; do
+    echo "--- Running Weak Scaling with P=$P MPI Ranks (Total N = $((250000 * P))) ---"
+    mpirun -np $P ./bin/kmeans_mpi -w -n 250000 -d 28 -k 8 -m 50 -t 0.0
+done

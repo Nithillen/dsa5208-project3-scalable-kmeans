@@ -32,22 +32,28 @@ The project requires an algorithm that is **not embarrassingly parallel** and re
 
 ```text
 project3_scalable/
-├── .gitignore                   # Excludes >100 MB raw CSVs & compiled binaries from Git
-├── Makefile                     # Build system for Serial, MPI, OpenMP, and CUDA targets
-├── README.md                    # Complete project documentation & benchmark results
-├── bin/                         # Compiled executables
-├── data/                        # Generated via scripts/prepare_higgs_data.py
-│   ├── higgs_clean.csv          # 597,638 x 28 cleaned HIGGS features (131 MB)
-│   └── higgs_labels.txt         # Ground-truth labels (1 = Higgs signal, 0 = background)
+├── .gitignore                     # Excludes >100 MB raw CSVs & compiled binaries from Git
+├── Makefile                       # Build system for Serial, MPI, OpenMP, and CUDA targets
+├── README.md                      # Complete project documentation & benchmark results
+├── bin/                           # Compiled executables (kmeans_serial, kmeans_mpi)
+├── data/                          # Generated via scripts/prepare_higgs_data.py
+│   ├── higgs_clean.csv            # 597,638 x 28 cleaned HIGGS features (131 MB)
+│   └── higgs_labels.txt           # Ground-truth labels (1 = Higgs signal, 0 = background)
 ├── results/
-│   ├── centroids_serial.txt     # Converged 8 x 28 reference centroids for validation
-│   ├── serial_scaling_N.csv     # 1-node serial runtime scaling vs. problem size N
-│   └── serial_scaling_K.csv     # 1-node serial runtime scaling vs. cluster count K
+│   ├── centroids_serial.txt       # Converged 8 x 28 reference centroids for validation
+│   ├── centroids_mpi.txt          # Converged 8 x 28 MPI centroids (matches serial to 1e-12)
+│   ├── serial_scaling_N.csv       # 1-node serial runtime scaling vs. problem size N
+│   ├── serial_scaling_K.csv       # 1-node serial runtime scaling vs. cluster count K
+│   ├── mpi_strong_scaling.csv     # Pure MPI strong scaling on UCI HIGGS
+│   └── mpi_weak_scaling.csv       # Pure MPI weak scaling (200k pts/rank)
 ├── scripts/
-│   ├── prepare_higgs_data.py    # Fast HTTP streaming downloader & cleaner for UCI HIGGS
-│   └── run_serial_scaling.py    # Automated 1-node serial scaling benchmark suite
+│   ├── prepare_higgs_data.py      # Fast HTTP streaming downloader & cleaner for UCI HIGGS
+│   ├── run_serial_scaling.py      # Automated 1-node serial scaling benchmark suite
+│   ├── run_mpi_scaling.py         # Automated Pure MPI strong & weak scaling benchmark suite
+│   └── vanda_mpi_256cores.pbs     # PBS batch job script for 1 to 256 CPU cores on NUS Vanda
 └── src/
-    └── kmeans_serial.cpp        # 1-core reference baseline + HIGGS physics analyzer
+    ├── kmeans_serial.cpp          # 1-core reference baseline + HIGGS physics analyzer
+    └── kmeans_mpi.cpp             # Pure MPI implementation (MPI_Scatterv + MPI_Allreduce)
 ```
 
 ---
@@ -91,18 +97,51 @@ Varying $K \in \{2, 4, 8, 16, 32\}$ (`results/serial_scaling_K.csv`) demonstrate
 
 ---
 
-## 4. Quickstart: Reproducing the 1-Node Serial Results
+## 4. Step 2 Completed: Pure MPI Parallelization (`src/kmeans_mpi.cpp`)
+
+### A. Parallel Architecture & Design Decisions
+1. **1D Row-Block Domain Decomposition (`MPI_Scatterv`):**
+   - Rank $0$ parses `data/higgs_clean.csv` ($N = 597,638, d = 28$), initializes the $K$ centroids deterministically, broadcasts metadata and initial centroids via `MPI_Bcast`, and scatters contiguous blocks of rows $N_p = \lfloor N/P \rfloor + \mathbb{I}(p < N \bmod P)$ to each rank $p \in \{0, \dots, P-1\}$ via `MPI_Scatterv`.
+   - Each rank holds **only** its local partition `local_data` ($N_p \times d$ doubles), reducing per-process memory footprint by a factor of $P$.
+2. **Global Synchronization (`MPI_Allreduce`):**
+   - During the Expectation step, each rank computes distances on its local $N_p$ points and accumulates partial cluster sums `local_sums` ($K \times d$ doubles) and `local_counts` ($K$ integers).
+   - At the end of each iteration, two `MPI_Allreduce` calls (`MPI_SUM`) aggregate `local_sums` $\to$ `global_sums` and `local_counts` $\to$ `global_counts` across all $P$ ranks in $\mathcal{O}(K \cdot d \cdot \log P)$ time so every rank updates its local copy of `centroids` identically.
+3. **Separate Instrumentation of Computation vs. Communication Time:**
+   - Using `MPI_Wtime()`, every iteration records `iter_comp` (distance evaluation + local accumulation + centroid division) separately from `iter_comm` (`MPI_Allreduce` synchronization + load-imbalance barrier time).
+
+### B. Local Multi-Core Pure MPI Strong Scaling on UCI HIGGS ($N = 597,638, d = 28, K = 8, 50\text{ Iters}$)
+| MPI Ranks ($P$) | Points / Rank | Total Time (s) | Comp Time (s) | `MPI_Allreduce` Comm (s) | Comm % | Speedup $S(P)$ | Efficiency $E(P)$ | Max Centroid Error vs. Serial |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| $1$ | $597,638$ | $1.3101\text{ s}$ | $1.3100\text{ s}$ | $0.0000\text{ s}$ | $0.0\%$ | $1.00\times$ | $100.0\%$ | $4.977 \times 10^{-12}$ |
+| $2$ | $298,819$ | $0.6802\text{ s}$ | $0.6761\text{ s}$ | $0.0049\text{ s}$ | $0.7\%$ | $1.93\times$ | $96.3\%$ | $5.484 \times 10^{-12}$ |
+| $4$ | $149,409$ | $0.4031\text{ s}$ | $0.3983\text{ s}$ | $0.0108\text{ s}$ | $2.7\%$ | $3.25\times$ | $81.3\%$ | $5.810 \times 10^{-12}$ |
+| $8$ | $74,704$ | $0.4403\text{ s}$ | $0.3174\text{ s}$ | $0.1442\text{ s}$ | $32.8\%$ | $2.98\times$ | $37.2\%$ | $6.763 \times 10^{-12}$ |
+
+### C. Local Multi-Core Pure MPI Weak Scaling ($N_{\text{per\_rank}} = 200,000\text{ pts/rank}, d = 28, K = 8, 30\text{ Iters}$)
+| MPI Ranks ($P$) | Total Points ($N = 200\text{k} \times P$) | Total Time (s) | Comp Time (s) | Comm Time (s) | Comm % | Weak Efficiency $T(1)/T(P)$ | Aggregate Throughput |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| $1$ | $200,000$ | $0.2927\text{ s}$ | $0.2926\text{ s}$ | $0.0000\text{ s}$ | $0.0\%$ | $100.0\%$ | $20.50\text{ M pts/s}$ |
+| $2$ | $400,000$ | $0.2733\text{ s}$ | $0.2702\text{ s}$ | $0.0032\text{ s}$ | $1.2\%$ | $107.1\%$ | $43.91\text{ M pts/s}$ |
+| $4$ | $800,000$ | $0.3695\text{ s}$ | $0.3569\text{ s}$ | $0.0324\text{ s}$ | $8.8\%$ | $79.2\%$ | $64.94\text{ M pts/s}$ |
+| $8$ | $1,600,000$ | $0.5518\text{ s}$ | $0.4662\text{ s}$ | $0.1173\text{ s}$ | $21.2\%$ | $53.0\%$ | $86.98\text{ M pts/s}$ |
+
+---
+
+## 5. Quickstart: Building & Running Serial and Pure MPI
 
 ```bash
 # 1. Stream and clean the UCI HIGGS dataset (ID #280) into data/higgs_clean.csv
 python3 scripts/prepare_higgs_data.py
 
-# 2. Compile the serial baseline
+# 2. Compile both Serial and Pure MPI executables
 make
 
-# 3. Run the 50-iteration clustering & physics evaluation on UCI HIGGS
-./bin/kmeans_serial -f data/higgs_clean.csv -l data/higgs_labels.txt -k 8 -m 50 -t 1e-5
+# 3. Run Pure MPI on UCI HIGGS with 4 MPI ranks and validate against serial centroids
+mpirun -np 4 ./bin/kmeans_mpi -f data/higgs_clean.csv -r results/centroids_serial.txt -k 8 -m 50 -t 1e-5
 
-# 4. Run the full 1-node problem-size (N) and cluster-count (K) scaling suite
-python3 scripts/run_serial_scaling.py
+# 4. Run automated Pure MPI Strong & Weak scaling benchmarks
+python3 scripts/run_mpi_scaling.py
+
+# 5. On NUS Vanda Supercomputer (scales up to 256 CPU cores across 4 nodes):
+qsub scripts/vanda_mpi_256cores.pbs
 ```
