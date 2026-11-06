@@ -142,7 +142,7 @@ inline bool load_csv_data(const std::string& filename, std::vector<double>& data
                 if (max_rows > 0) {
                     data.reserve(max_rows * d);
                 } else {
-                    data.reserve(600000ULL * d);
+                    data.reserve(11000000ULL * d);
                 }
             } else if (row.size() != d) {
                 continue;
