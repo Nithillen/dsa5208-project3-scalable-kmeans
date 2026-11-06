@@ -45,7 +45,7 @@ bin/kmeans_metal_gpu: src/kmeans_metal_gpu.mm src/kmeans_common.hpp
 
 bin/kmeans_cuda: src/kmeans_cuda.cu src/kmeans_common.hpp
 	mkdir -p bin results
-	$(NVCC) -O3 -std=c++17 -ccbin $(MPICXX) $< -o $@
+	$(NVCC) -O3 -std=c++17 -arch=native -ccbin $(MPICXX) $< -o $@ 2>/dev/null || $(NVCC) -O3 -std=c++17 -ccbin $(MPICXX) $< -o $@
 
 test: all
 	python3 scripts/test_correctness.py

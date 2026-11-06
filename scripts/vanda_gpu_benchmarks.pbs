@@ -21,6 +21,8 @@ mkdir -p bin results
 
 # Compile CUDA and Hybrid OpenMP GPU Target executables
 echo "[Step 1] Compiling CUDA and OpenMP GPU targets..."
+nvcc -O3 -std=c++17 -arch=native -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda 2>/dev/null || \
+nvcc -O3 -std=c++17 -gencode arch=compute_80,code=sm_80 -gencode arch=compute_86,code=sm_86 -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda 2>/dev/null || \
 nvcc -O3 -std=c++17 -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda
 nvc++ -O3 -std=c++17 -mp=gpu -I$(dirname $(which mpicxx))/../include -L$(dirname $(which mpicxx))/../lib -lmpi src/kmeans_omp.cpp -o bin/kmeans_omp_gpu 2>/dev/null || true
 
