@@ -1,0 +1,4 @@
+K,gpu_device,cpu_1core_s,omp_4core_s,gpu_total_s,gpu_kernel_s,host_accum_s,gpu_speedup_vs_1core,gpu_throughput_mpts_s,centroid_rmse
+8,Apple M5,0.5621,0.1871,0.2022,0.1489,0.0531,2.78,88.68,3.199e-02
+16,Apple M5,0.9243,0.3100,0.1459,0.0945,0.0513,6.34,122.88,0.000e+00
+32,Apple M5,1.6754,0.5563,0.2070,0.1557,0.0511,8.09,86.61,0.000e+00

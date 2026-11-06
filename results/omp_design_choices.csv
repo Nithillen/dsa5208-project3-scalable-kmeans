@@ -1,0 +1,5 @@
+P,T,accum_mode,schedule,total_time_s,avg_iter_ms,throughput_mpts_s,max_abs_err
+1,4,private,static,0.3265,6.53,91.51,5.810e-12
+1,4,private,dynamic,0.3054,6.11,97.85,5.810e-12
+1,4,private,guided,0.2947,5.89,101.40,5.813e-12
+1,4,atomic,static,1.8447,36.89,16.20,4.982e-12
