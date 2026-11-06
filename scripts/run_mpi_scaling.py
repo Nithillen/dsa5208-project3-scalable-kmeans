@@ -26,7 +26,7 @@ MPIRUN = shutil.which("mpirun") or "/opt/homebrew/bin/mpirun"
 
 
 def run_mpi(np, args, oversubscribe=False):
-    cmd = [MPIRUN]
+    cmd = [MPIRUN, "--bind-to", "none"]
     if oversubscribe:
         cmd.append("--oversubscribe")
     cmd.extend(["-np", str(np), BIN_MPI] + args)
