@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -P dsa5208
+#PBS -P personal-nithillen.jayaseelan
 #PBS -j oe
 #PBS -N dsa5208_kmeans_vanda
 #PBS -q gpu
