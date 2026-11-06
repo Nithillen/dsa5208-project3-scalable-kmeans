@@ -1,0 +1,56 @@
+#!/bin/bash
+#PBS -P dsa5208
+#PBS -j oe
+#PBS -N dsa5208_kmeans_vanda
+#PBS -q gpu
+#PBS -l select=1:ncpus=72:mpiprocs=72:ompthreads=1:ngpus=1:mem=128gb
+#PBS -l walltime=00:45:00
+
+cd $PBS_O_WORKDIR || exit 1
+
+echo "=================================================================="
+echo "  DSA5208 Project 3: Full Vanda HPC Benchmark Suite               "
+echo "  Host Node : $(hostname)                                         "
+echo "  Date      : $(date)                                             "
+echo "=================================================================="
+lscpu | grep -E "Model name|Socket|Thread|NUMA|CPU\(s\):" || true
+nvidia-smi || true
+
+# Load recommended CUDA-aware OpenMPI + NVHPC module on Vanda (Lecture 12 Slide 40)
+module load nvhpc-hpcx-cuda12/26.1
+
+mkdir -p bin results data
+
+# 1. Compile all executables on Vanda compute node
+echo "[Step 1] Compiling Serial, MPI, Standalone OpenMP, Hybrid MPI+OpenMP, and CUDA..."
+g++ -O3 -std=c++17 src/kmeans_serial.cpp -o bin/kmeans_serial
+mpicxx -O3 -std=c++17 src/kmeans_mpi.cpp -o bin/kmeans_mpi
+mpicxx -O3 -std=c++17 -fopenmp src/kmeans_omp.cpp -o bin/kmeans_omp
+g++ -O3 -std=c++17 -fopenmp -DSTANDALONE_OMP src/kmeans_omp.cpp -o bin/kmeans_omp_standalone
+nvcc -O3 -std=c++17 -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda
+
+# 2. Prepare UCI HIGGS dataset (600K standard benchmark slice + optional full 11M)
+if [ ! -f data/higgs_clean.csv ]; then
+    echo "[Step 2] Streaming & cleaning UCI HIGGS dataset (full IEEE-754 precision)..."
+    python3 scripts/prepare_higgs_data.py --rows 600000
+fi
+
+# 3. Run automated correctness & SSE validation suite
+echo "[Step 3] Running automated correctness & SSE validation test suite..."
+python3 scripts/test_correctness.py
+
+# 4. Run Serial Baseline & Complexity Scaling
+echo "[Step 4] Running Serial Baseline & Complexity Scaling..."
+python3 scripts/run_serial_scaling.py
+
+# 5. Run Pure MPI Strong, Weak & Allreduce Scaling (1 to 64 physical Vanda cores, NO oversubscribe)
+echo "[Step 5] Running Pure MPI Strong, Weak & Allreduce Scaling on Vanda physical cores..."
+python3 scripts/run_mpi_scaling.py --ranks "1,2,4,8,16,32,64"
+
+# 6. Run Hybrid MPI + OpenMP (up to 72 cores) & NVIDIA CUDA GPU Benchmarks on Vanda
+echo "[Step 6] Running Hybrid MPI + OpenMP (72-core node) & NVIDIA CUDA GPU Benchmarks..."
+python3 scripts/run_hybrid_and_gpu_benchmarks.py --vanda
+
+echo "=================================================================="
+echo "  All Vanda HPC CSVs saved to results/!                           "
+echo "=================================================================="

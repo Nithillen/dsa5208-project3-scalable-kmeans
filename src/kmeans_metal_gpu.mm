@@ -2,7 +2,8 @@
  * Hybrid MPI + Apple Metal GPU K-Means Clustering (src/kmeans_metal_gpu.mm)
  * Executes point-to-centroid distance evaluation on the Apple M-series GPU
  * using Threadgroup Shared Memory (equivalent to CUDA __shared__ memory)
- * and Unified Shared Memory (zero-copy CPU/GPU buffers), combined with
+ * with explicit bounds guard (K*d <= 1024 uses shared memory; K*d > 1024
+ * safely falls back to device memory) and Unified Shared Memory, combined with
  * OpenMP double-precision accumulation and MPI_Allreduce synchronization.
  */
 
@@ -10,15 +11,7 @@
 #import <Metal/Metal.h>
 #include <mpi.h>
 #include <omp.h>
-#include <iostream>
-#include <vector>
-#include <cmath>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <string>
-#include <cfloat>
-#include <cstdlib>
+#include "kmeans_common.hpp"
 
 static const char* METAL_SHADER_SRC = R"(
 #include <metal_stdlib>
@@ -35,12 +28,15 @@ kernel void kmeans_assign_kernel(
     uint tid                          [[thread_position_in_threadgroup]],
     uint tg_size                      [[threads_per_threadgroup]])
 {
-    // On-chip threadgroup shared memory for K*d centroids (up to K=32, d=32 -> 1024 floats)
+    // On-chip threadgroup shared memory for K*d centroids (guarded for kd <= 1024)
     threadgroup float s_centroids[1024];
 
     uint kd = K * d;
-    for (uint i = tid; i < kd; i += tg_size) {
-        s_centroids[i] = centroids[i];
+    bool use_shared = (kd <= 1024);
+    if (use_shared) {
+        for (uint i = tid; i < kd; i += tg_size) {
+            s_centroids[i] = centroids[i];
+        }
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
@@ -50,94 +46,37 @@ kernel void kmeans_assign_kernel(
     uint best_k = 0;
     float best_dist = MAXFLOAT;
 
-    for (uint k = 0; k < K; ++k) {
-        float dist = 0.0f;
-        threadgroup const float* c = s_centroids + k * d;
-        for (uint j = 0; j < d; ++j) {
-            float diff = pt[j] - c[j];
-            dist = fma(diff, diff, dist);
+    if (use_shared) {
+        for (uint k = 0; k < K; ++k) {
+            float dist = 0.0f;
+            threadgroup const float* c = s_centroids + k * d;
+            for (uint j = 0; j < d; ++j) {
+                float diff = pt[j] - c[j];
+                dist = fma(diff, diff, dist);
+            }
+            if (dist < best_dist) {
+                best_dist = dist;
+                best_k = k;
+            }
         }
-        if (dist < best_dist) {
-            best_dist = dist;
-            best_k = k;
+    } else {
+        // Safe fallback when K * d > 1024 floats
+        for (uint k = 0; k < K; ++k) {
+            float dist = 0.0f;
+            device const float* c = centroids + k * d;
+            for (uint j = 0; j < d; ++j) {
+                float diff = pt[j] - c[j];
+                dist = fma(diff, diff, dist);
+            }
+            if (dist < best_dist) {
+                best_dist = dist;
+                best_k = k;
+            }
         }
     }
     assignments[gid] = best_k;
 }
 )";
-
-bool load_csv_data(const std::string& filename, std::vector<double>& data, size_t& N, size_t& d, size_t max_rows = 0) {
-    std::ifstream file(filename, std::ios::in | std::ios::binary);
-    if (!file.is_open()) return false;
-    std::vector<char> io_buf(8 * 1024 * 1024);
-    file.rdbuf()->pubsetbuf(io_buf.data(), io_buf.size());
-
-    std::string line;
-    data.clear();
-    N = 0;
-    d = 0;
-    std::vector<double> row;
-    row.reserve(32);
-
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        row.clear();
-        const char* ptr = line.c_str();
-        char* endptr = nullptr;
-        bool valid_row = true;
-        while (*ptr != '\0' && *ptr != '\r' && *ptr != '\n') {
-            double val = std::strtod(ptr, &endptr);
-            if (ptr == endptr) { valid_row = false; break; }
-            row.push_back(val);
-            ptr = endptr;
-            while (*ptr == ',' || *ptr == ' ' || *ptr == '\t') ++ptr;
-        }
-        if (valid_row && !row.empty()) {
-            if (d == 0) {
-                d = row.size();
-                data.reserve((max_rows > 0 ? max_rows : 600000ULL) * d);
-            } else if (row.size() != d) continue;
-            data.insert(data.end(), row.begin(), row.end());
-            N++;
-            if (max_rows > 0 && N >= max_rows) break;
-        }
-    }
-    return (N > 0 && d > 0);
-}
-
-void initialize_centroids(const std::vector<double>& data, std::vector<double>& centroids, size_t N, size_t K, size_t d) {
-    centroids.resize(K * d);
-    size_t step = N / K;
-    for (size_t k = 0; k < K; ++k) {
-        size_t idx = k * step;
-        for (size_t j = 0; j < d; ++j) {
-            centroids[k * d + j] = data[idx * d + j];
-        }
-    }
-}
-
-void validate_centroids(const std::string& ref_file, const std::vector<double>& centroids, size_t K, size_t d) {
-    std::ifstream in(ref_file);
-    if (!in.is_open()) return;
-    size_t ref_K = 0, ref_d = 0;
-    if (!(in >> ref_K >> ref_d) || ref_K != K || ref_d != d) return;
-
-    double max_abs_err = 0.0, sum_sq_err = 0.0;
-    for (size_t i = 0; i < K * d; ++i) {
-        double ref_val = 0.0;
-        in >> ref_val;
-        double err = std::abs(centroids[i] - ref_val);
-        if (err > max_abs_err) max_abs_err = err;
-        sum_sq_err += err * err;
-    }
-    double rmse = std::sqrt(sum_sq_err / (K * d));
-    std::cout << "\n================ GPU Correctness Validation ================\n"
-              << "Reference File   : " << ref_file << "\n"
-              << "Max Abs Error    : " << std::scientific << std::setprecision(4) << max_abs_err << "\n"
-              << "Centroid RMSE    : " << std::scientific << std::setprecision(4) << rmse << "\n"
-              << "Validation Status: " << (rmse < 1e-3 ? "PASSED (FP32 GPU Shader Matches FP64 Serial)" : "WARNING") << "\n"
-              << "============================================================\n";
-}
 
 int main(int argc, char* argv[]) {
     int provided = 0;
@@ -146,16 +85,24 @@ int main(int argc, char* argv[]) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
 
-    std::string input_file = "data/higgs_clean.csv";
-    std::string ref_file   = "results/centroids_serial.txt";
+    std::string input_file  = "data/higgs_clean.csv";
+    std::string ref_file    = "results/centroids_serial.txt";
+    std::string output_file = "results/centroids_metal.txt";
     size_t N = 597638, d = 28, K = 8, max_iters = 50;
+    size_t max_rows_override = 0;
     double tolerance = 1e-5;
+    unsigned int seed = 42;
     int num_threads = 4;
+    bool use_synthetic = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "-f" && i + 1 < argc) input_file = argv[++i];
+        if (arg == "-f" && i + 1 < argc) { input_file = argv[++i]; use_synthetic = false; }
+        else if (arg == "-s") { use_synthetic = true; }
+        else if (arg == "-n" && i + 1 < argc) { N = std::stoull(argv[++i]); max_rows_override = N; }
+        else if (arg == "-d" && i + 1 < argc) d = std::stoull(argv[++i]);
         else if (arg == "-r" && i + 1 < argc) ref_file = argv[++i];
+        else if (arg == "-o" && i + 1 < argc) output_file = argv[++i];
         else if (arg == "-k" && i + 1 < argc) K = std::stoull(argv[++i]);
         else if (arg == "-m" && i + 1 < argc) max_iters = std::stoull(argv[++i]);
         else if (arg == "-t" && i + 1 < argc) tolerance = std::stod(argv[++i]);
@@ -183,39 +130,53 @@ int main(int argc, char* argv[]) {
         id<MTLCommandQueue> queue = [device newCommandQueue];
 
         std::vector<double> full_data, local_data, centroids;
-        if (rank == 0) {
-            if (!load_csv_data(input_file, full_data, N, d)) MPI_Abort(MPI_COMM_WORLD, 1);
-            initialize_centroids(full_data, centroids, N, K, d);
+        size_t local_N = 0;
+
+        if (!use_synthetic) {
+            if (rank == 0) {
+                if (!load_csv_data(input_file, full_data, N, d, max_rows_override)) MPI_Abort(MPI_COMM_WORLD, 1);
+                initialize_centroids(full_data, centroids, N, K, d);
+            }
+
+            unsigned long long meta[2] = { static_cast<unsigned long long>(N), static_cast<unsigned long long>(d) };
+            MPI_Bcast(meta, 2, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
+            N = static_cast<size_t>(meta[0]);
+            d = static_cast<size_t>(meta[1]);
+
+            if (rank != 0) centroids.resize(K * d);
+            MPI_Bcast(centroids.data(), static_cast<int>(K * d), MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+            std::vector<int> sendcounts(num_procs, 0), displs(num_procs, 0);
+            size_t base_rows = N / num_procs, rem_rows = N % num_procs;
+            int offset = 0;
+            for (int p = 0; p < num_procs; ++p) {
+                size_t rows_p = base_rows + (static_cast<size_t>(p) < rem_rows ? 1 : 0);
+                sendcounts[p] = static_cast<int>(rows_p * d);
+                displs[p] = offset;
+                offset += sendcounts[p];
+            }
+
+            local_N = static_cast<size_t>(sendcounts[rank]) / d;
+            local_data.resize(local_N * d);
+            MPI_Scatterv(rank == 0 ? full_data.data() : nullptr, sendcounts.data(), displs.data(), MPI_DOUBLE,
+                         local_data.data(), sendcounts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        } else {
+            size_t base_rows = N / static_cast<size_t>(num_procs);
+            size_t rem_rows  = N % static_cast<size_t>(num_procs);
+            size_t global_start = 0;
+            for (int p = 0; p < rank; ++p) {
+                global_start += base_rows + (static_cast<size_t>(p) < rem_rows ? 1 : 0);
+            }
+            local_N = base_rows + (static_cast<size_t>(rank) < rem_rows ? 1 : 0);
+            generate_synthetic_partition_and_centroids(local_data, centroids, N, global_start, local_N, d, K, seed);
         }
-
-        unsigned long long meta[2] = { static_cast<unsigned long long>(N), static_cast<unsigned long long>(d) };
-        MPI_Bcast(meta, 2, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
-        N = static_cast<size_t>(meta[0]);
-        d = static_cast<size_t>(meta[1]);
-
-        if (rank != 0) centroids.resize(K * d);
-        MPI_Bcast(centroids.data(), static_cast<int>(K * d), MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-        std::vector<int> sendcounts(num_procs, 0), displs(num_procs, 0);
-        size_t base_rows = N / num_procs, rem_rows = N % num_procs;
-        int offset = 0;
-        for (int p = 0; p < num_procs; ++p) {
-            size_t rows_p = base_rows + (static_cast<size_t>(p) < rem_rows ? 1 : 0);
-            sendcounts[p] = static_cast<int>(rows_p * d);
-            displs[p] = offset;
-            offset += sendcounts[p];
-        }
-
-        size_t local_N = static_cast<size_t>(sendcounts[rank]) / d;
-        local_data.resize(local_N * d);
-        MPI_Scatterv(rank == 0 ? full_data.data() : nullptr, sendcounts.data(), displs.data(), MPI_DOUBLE,
-                     local_data.data(), sendcounts[rank], MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
         if (rank == 0) {
             std::cout << "====================================================================\n"
                       << "  Hybrid MPI + GPU (Apple Metal Shader + OpenMP) K-Means            \n"
                       << "====================================================================\n"
                       << "  GPU Device       : " << [[device name] UTF8String] << "\n"
+                      << "  Threadgroup Cache: " << (K * d <= 1024 ? "ENABLED (1024-float shared mem)" : "FALLBACK (Device mem, K*d > 1024)") << "\n"
                       << "  MPI Ranks (P)    : " << num_procs << " | OMP Threads: " << num_threads << "\n"
                       << "  Total Points (N) : " << N << " (" << local_N << " pts/rank)\n"
                       << "  Features (d)     : " << d << " | Clusters (K): " << K << "\n\n";
@@ -355,6 +316,11 @@ int main(int argc, char* argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
         double total_sec = MPI_Wtime() - t_start;
 
+        // Evaluate exact double-precision SSE on final converged centroids
+        double final_local_sse = compute_local_sse(local_data, centroids, local_N, d, K);
+        double final_global_sse = 0.0;
+        MPI_Allreduce(&final_local_sse, &final_global_sse, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
         if (rank == 0) {
             std::cout << "\n================ Hybrid MPI + GPU Summary ================\n"
                       << "GPU Hardware     : " << [[device name] UTF8String] << "\n"
@@ -369,8 +335,11 @@ int main(int argc, char* argv[]) {
                       << "Avg Time/Iter    : " << std::fixed << std::setprecision(2) << (total_sec * 1000.0 / iter) << " ms\n"
                       << "Throughput       : " << std::fixed << std::setprecision(2)
                       << ((static_cast<double>(N) * iter) / (total_sec * 1e6)) << " M points/sec\n"
+                      << "Final SSE (WCSS) : " << std::scientific << std::setprecision(6) << final_global_sse << "\n"
                       << "==========================================================\n";
-            validate_centroids(ref_file, centroids, K, d);
+            save_centroids_with_sse(output_file, centroids, K, d, final_global_sse);
+            // FP32 shader distance evaluation vs FP64 serial reference typically agrees to ~1e-4 RMSE
+            validate_centroids_and_sse(ref_file, centroids, K, d, final_global_sse, 1e-3);
         }
     }
 

@@ -1,16 +1,9 @@
+#ifndef STANDALONE_OMP
 #include <mpi.h>
+#endif
 #include <omp.h>
-#include <iostream>
-#include <vector>
-#include <cmath>
-#include <random>
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <string>
-#include <cfloat>
-#include <cstdlib>
-#include <algorithm>
+#include <chrono>
+#include "kmeans_common.hpp"
 
 struct Config {
     std::string input_file = "";
@@ -18,6 +11,8 @@ struct Config {
     std::string output_file = "results/centroids_omp.txt";
     std::string schedule_type = "static"; // "static", "dynamic", "guided"
     std::string accum_mode = "private";   // "private" (thread-local padded) vs "atomic"
+    std::string allreduce_mode = "separate"; // "separate" or "packed"
+    std::string io_mode = "scatter";         // "scatter" or "parallel"
     size_t N = 597638;
     size_t d = 28;
     size_t K = 8;
@@ -31,95 +26,6 @@ struct Config {
     bool use_gpu_target = false; // OpenMP target offload to GPU (-g)
 };
 
-bool load_csv_data(const std::string& filename, std::vector<double>& data, size_t& N, size_t& d, size_t max_rows = 0) {
-    std::ifstream file(filename, std::ios::in | std::ios::binary);
-    if (!file.is_open()) {
-        std::cerr << "Error: Could not open file " << filename << std::endl;
-        return false;
-    }
-
-    std::vector<char> io_buf(8 * 1024 * 1024);
-    file.rdbuf()->pubsetbuf(io_buf.data(), io_buf.size());
-
-    std::string line;
-    data.clear();
-    N = 0;
-    d = 0;
-
-    std::vector<double> row;
-    row.reserve(32);
-
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
-
-        row.clear();
-        const char* ptr = line.c_str();
-        char* endptr = nullptr;
-        bool valid_row = true;
-
-        while (*ptr != '\0' && *ptr != '\r' && *ptr != '\n') {
-            double val = std::strtod(ptr, &endptr);
-            if (ptr == endptr) {
-                valid_row = false;
-                break;
-            }
-            row.push_back(val);
-            ptr = endptr;
-            while (*ptr == ',' || *ptr == ' ' || *ptr == '\t') {
-                ++ptr;
-            }
-        }
-
-        if (valid_row && !row.empty()) {
-            if (d == 0) {
-                d = row.size();
-                if (max_rows > 0) data.reserve(max_rows * d);
-                else data.reserve(600000ULL * d);
-            } else if (row.size() != d) {
-                continue;
-            }
-            data.insert(data.end(), row.begin(), row.end());
-            N++;
-            if (max_rows > 0 && N >= max_rows) break;
-        }
-    }
-    return (N > 0 && d > 0);
-}
-
-void generate_local_synthetic_data(std::vector<double>& local_data,
-                                   std::vector<double>& centroids,
-                                   size_t local_N, size_t d, size_t K,
-                                   unsigned int seed, int rank) {
-    std::mt19937 center_gen(seed);
-    std::uniform_real_distribution<double> center_dist(-50.0, 50.0);
-
-    std::vector<double> true_centers(K * d);
-    for (size_t k = 0; k < K; ++k) {
-        for (size_t j = 0; j < d; ++j) {
-            true_centers[k * d + j] = center_dist(center_gen);
-        }
-    }
-
-    std::mt19937 pt_gen(seed + 10007U * static_cast<unsigned int>(rank + 1));
-    std::normal_distribution<double> noise_dist(0.0, 3.0);
-    std::uniform_int_distribution<size_t> cluster_choice(0, K - 1);
-
-    local_data.resize(local_N * d);
-    for (size_t i = 0; i < local_N; ++i) {
-        size_t c = cluster_choice(pt_gen);
-        for (size_t j = 0; j < d; ++j) {
-            local_data[i * d + j] = true_centers[c * d + j] + noise_dist(pt_gen);
-        }
-    }
-
-    centroids.resize(K * d);
-    for (size_t k = 0; k < K; ++k) {
-        for (size_t j = 0; j < d; ++j) {
-            centroids[k * d + j] = true_centers[k * d + j] + 1.5;
-        }
-    }
-}
-
 inline double squared_euclidean_distance(const double* pt, const double* centroid, size_t d) {
     double dist = 0.0;
     #pragma omp simd reduction(+:dist)
@@ -130,62 +36,22 @@ inline double squared_euclidean_distance(const double* pt, const double* centroi
     return dist;
 }
 
-void initialize_centroids(const std::vector<double>& data, std::vector<double>& centroids, size_t N, size_t K, size_t d) {
-    centroids.resize(K * d);
-    size_t step = N / K;
-    for (size_t k = 0; k < K; ++k) {
-        size_t idx = k * step;
-        for (size_t j = 0; j < d; ++j) {
-            centroids[k * d + j] = data[idx * d + j];
-        }
-    }
-}
-
-void save_centroids(const std::string& filename, const std::vector<double>& centroids, size_t K, size_t d) {
-    std::ofstream out(filename);
-    if (!out.is_open()) return;
-    out << std::setprecision(12);
-    out << K << " " << d << "\n";
-    for (size_t k = 0; k < K; ++k) {
-        for (size_t j = 0; j < d; ++j) {
-            out << centroids[k * d + j] << (j + 1 == d ? "" : " ");
-        }
-        out << "\n";
-    }
-}
-
-void validate_centroids(const std::string& ref_file, const std::vector<double>& centroids, size_t K, size_t d) {
-    std::ifstream in(ref_file);
-    if (!in.is_open()) return;
-    size_t ref_K = 0, ref_d = 0;
-    if (!(in >> ref_K >> ref_d) || ref_K != K || ref_d != d) return;
-
-    double max_abs_err = 0.0;
-    double sum_sq_err = 0.0;
-    for (size_t i = 0; i < K * d; ++i) {
-        double ref_val = 0.0;
-        in >> ref_val;
-        double err = std::abs(centroids[i] - ref_val);
-        if (err > max_abs_err) max_abs_err = err;
-        sum_sq_err += err * err;
-    }
-    double rmse = std::sqrt(sum_sq_err / (K * d));
-
-    std::cout << "\n================ Correctness Validation ================\n"
-              << "Reference File   : " << ref_file << "\n"
-              << "Max Abs Error    : " << std::scientific << std::setprecision(4) << max_abs_err << "\n"
-              << "Centroid RMSE    : " << std::scientific << std::setprecision(4) << rmse << "\n"
-              << "Validation Status: " << (max_abs_err < 1e-9 ? "PASSED (Exact Match with Serial)" : "WARNING") << "\n"
-              << "========================================================\n";
+inline double wall_time_sec() {
+#ifndef STANDALONE_OMP
+    return MPI_Wtime();
+#else
+    return omp_get_wtime();
+#endif
 }
 
 int main(int argc, char* argv[]) {
+    int rank = 0, num_procs = 1;
+#ifndef STANDALONE_OMP
     int provided = 0;
     MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
-
-    int rank = 0, num_procs = 1;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
+#endif
 
     Config cfg;
     size_t max_rows_override = 0;
@@ -204,6 +70,9 @@ int main(int argc, char* argv[]) {
         else if (arg == "-s" && i + 1 < argc) cfg.schedule_type = argv[++i];
         else if (arg == "-c" && i + 1 < argc) cfg.chunk_size = std::stoi(argv[++i]);
         else if (arg == "-a" && i + 1 < argc) cfg.accum_mode = argv[++i];
+        else if (arg == "-allreduce" && i + 1 < argc) cfg.allreduce_mode = argv[++i];
+        else if (arg == "-io" && i + 1 < argc) cfg.io_mode = argv[++i];
+        else if (arg == "-p") cfg.allreduce_mode = "packed";
         else if (arg == "-w") cfg.weak_scaling = true;
         else if (arg == "-g") cfg.use_gpu_target = true;
     }
@@ -213,7 +82,6 @@ int main(int argc, char* argv[]) {
     }
     int active_threads = omp_get_max_threads();
 
-    // Configure OpenMP runtime schedule
     if (cfg.schedule_type == "dynamic") {
         omp_set_schedule(omp_sched_dynamic, cfg.chunk_size);
     } else if (cfg.schedule_type == "guided") {
@@ -228,108 +96,163 @@ int main(int argc, char* argv[]) {
     size_t local_N = 0;
 
     if (!cfg.use_synthetic) {
-        std::vector<double> full_data;
-        if (rank == 0) {
-            if (!load_csv_data(cfg.input_file, full_data, total_N, cfg.d, max_rows_override)) {
+#ifdef STANDALONE_OMP
+        if (!load_csv_data(cfg.input_file, local_data, total_N, cfg.d, max_rows_override)) {
+            return 1;
+        }
+        local_N = total_N;
+        initialize_centroids(local_data, centroids, total_N, cfg.K, cfg.d);
+#else
+        if (cfg.io_mode == "parallel") {
+            if (!load_csv_partition(cfg.input_file, local_data, centroids, total_N, local_N,
+                                    cfg.d, cfg.K, rank, num_procs, max_rows_override)) {
                 MPI_Abort(MPI_COMM_WORLD, 1);
             }
-            initialize_centroids(full_data, centroids, total_N, cfg.K, cfg.d);
+        } else {
+            std::vector<double> full_data;
+            if (rank == 0) {
+                if (!load_csv_data(cfg.input_file, full_data, total_N, cfg.d, max_rows_override)) {
+                    MPI_Abort(MPI_COMM_WORLD, 1);
+                }
+                initialize_centroids(full_data, centroids, total_N, cfg.K, cfg.d);
+            }
+
+            unsigned long long meta[2] = { static_cast<unsigned long long>(total_N),
+                                           static_cast<unsigned long long>(cfg.d) };
+            MPI_Bcast(meta, 2, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
+            total_N = static_cast<size_t>(meta[0]);
+            cfg.d   = static_cast<size_t>(meta[1]);
+
+            if (rank != 0) centroids.resize(cfg.K * cfg.d);
+            MPI_Bcast(centroids.data(), static_cast<int>(cfg.K * cfg.d), MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+            size_t base_rows = total_N / static_cast<size_t>(num_procs);
+            size_t rem_rows  = total_N % static_cast<size_t>(num_procs);
+            local_N = base_rows + (static_cast<size_t>(rank) < rem_rows ? 1 : 0);
+            local_data.resize(local_N * cfg.d);
+
+            if (total_N * cfg.d < 2000000000ULL) {
+                std::vector<int> sendcounts(num_procs, 0);
+                std::vector<int> displs(num_procs, 0);
+                int offset = 0;
+                for (int p = 0; p < num_procs; ++p) {
+                    size_t rows_p = base_rows + (static_cast<size_t>(p) < rem_rows ? 1 : 0);
+                    sendcounts[p] = static_cast<int>(rows_p * cfg.d);
+                    displs[p] = offset;
+                    offset += sendcounts[p];
+                }
+                MPI_Scatterv(rank == 0 ? full_data.data() : nullptr,
+                             sendcounts.data(), displs.data(), MPI_DOUBLE,
+                             local_data.data(), sendcounts[rank], MPI_DOUBLE,
+                             0, MPI_COMM_WORLD);
+            } else {
+                if (rank == 0) {
+                    std::copy(full_data.begin(), full_data.begin() + local_N * cfg.d, local_data.begin());
+                    size_t offset_floats = local_N * cfg.d;
+                    for (int p = 1; p < num_procs; ++p) {
+                        size_t rows_p = base_rows + (static_cast<size_t>(p) < rem_rows ? 1 : 0);
+                        size_t count_floats = rows_p * cfg.d;
+                        MPI_Send(full_data.data() + offset_floats, static_cast<int>(count_floats),
+                                 MPI_DOUBLE, p, 0, MPI_COMM_WORLD);
+                        offset_floats += count_floats;
+                    }
+                } else {
+                    MPI_Recv(local_data.data(), static_cast<int>(local_N * cfg.d),
+                             MPI_DOUBLE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                }
+            }
         }
-
-        unsigned long long meta[2] = { static_cast<unsigned long long>(total_N),
-                                       static_cast<unsigned long long>(cfg.d) };
-        MPI_Bcast(meta, 2, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
-        total_N = static_cast<size_t>(meta[0]);
-        cfg.d   = static_cast<size_t>(meta[1]);
-
-        if (rank != 0) centroids.resize(cfg.K * cfg.d);
-        MPI_Bcast(centroids.data(), static_cast<int>(cfg.K * cfg.d), MPI_DOUBLE, 0, MPI_COMM_WORLD);
-
-        std::vector<int> sendcounts(num_procs, 0);
-        std::vector<int> displs(num_procs, 0);
-        size_t base_rows = total_N / num_procs;
-        size_t rem_rows  = total_N % num_procs;
-        int offset = 0;
-        for (int p = 0; p < num_procs; ++p) {
-            size_t rows_p = base_rows + (static_cast<size_t>(p) < rem_rows ? 1 : 0);
-            sendcounts[p] = static_cast<int>(rows_p * cfg.d);
-            displs[p] = offset;
-            offset += sendcounts[p];
-        }
-
-        local_N = static_cast<size_t>(sendcounts[rank]) / cfg.d;
-        local_data.resize(local_N * cfg.d);
-
-        MPI_Scatterv(rank == 0 ? full_data.data() : nullptr,
-                     sendcounts.data(), displs.data(), MPI_DOUBLE,
-                     local_data.data(), sendcounts[rank], MPI_DOUBLE,
-                     0, MPI_COMM_WORLD);
+#endif
     } else {
+        size_t global_start = 0;
         if (cfg.weak_scaling) {
             local_N = cfg.N;
             total_N = cfg.N * static_cast<size_t>(num_procs);
+            global_start = static_cast<size_t>(rank) * cfg.N;
         } else {
             total_N = cfg.N;
-            size_t base_rows = total_N / num_procs;
-            size_t rem_rows  = total_N % num_procs;
+            size_t base_rows = total_N / static_cast<size_t>(num_procs);
+            size_t rem_rows  = total_N % static_cast<size_t>(num_procs);
+            for (int p = 0; p < rank; ++p) {
+                global_start += base_rows + (static_cast<size_t>(p) < rem_rows ? 1 : 0);
+            }
             local_N = base_rows + (static_cast<size_t>(rank) < rem_rows ? 1 : 0);
         }
-        generate_local_synthetic_data(local_data, centroids, local_N, cfg.d, cfg.K, cfg.seed, rank);
+        generate_synthetic_partition_and_centroids(local_data, centroids, total_N, global_start, local_N,
+                                                   cfg.d, cfg.K, cfg.seed);
     }
 
     if (rank == 0) {
         std::cout << "====================================================================\n"
+#ifdef STANDALONE_OMP
+                  << "  Standalone OpenMP K-Means (CPU Shared-Memory)\n"
+#else
                   << "  Hybrid MPI + OpenMP K-Means (" << (cfg.use_gpu_target ? "GPU Target Offload" : "CPU Shared-Memory") << ")\n"
+#endif
                   << "====================================================================\n"
                   << "  MPI Ranks (P)     : " << num_procs << "\n"
                   << "  OMP Threads/Rank  : " << active_threads << "\n"
                   << "  Total Workers     : " << (num_procs * active_threads) << "\n"
                   << "  Accumulation Mode : " << cfg.accum_mode << "\n"
                   << "  OMP Schedule      : " << cfg.schedule_type << "\n"
+                  << "  Allreduce Mode    : " << cfg.allreduce_mode << "\n"
                   << "  Total Points (N)  : " << total_N << " (" << local_N << " pts/rank)\n"
                   << "  Features (d)      : " << cfg.d << " | Clusters (K): " << cfg.K << "\n\n";
     }
 
-    std::vector<double> local_sums(cfg.K * cfg.d, 0.0);
-    std::vector<double> global_sums(cfg.K * cfg.d, 0.0);
-    std::vector<unsigned long long> local_counts(cfg.K, 0);
-    std::vector<unsigned long long> global_counts(cfg.K, 0);
+    const size_t K = cfg.K;
+    const size_t d = cfg.d;
+#ifndef STANDALONE_OMP
+    const bool use_packed = (cfg.allreduce_mode == "packed");
+#endif
 
-    // Pre-allocate cache-line padded thread-private buffers to eliminate false sharing & heap allocation inside loop
-    const size_t stride_sums = ((cfg.K * cfg.d + 7) / 8) * 8; // Multiple of 64 bytes (8 doubles)
-    const size_t stride_cnts = ((cfg.K + 7) / 8) * 8;         // Multiple of 64 bytes (8 ull)
+    std::vector<double> local_sums(K * d, 0.0);
+    std::vector<double> global_sums(K * d, 0.0);
+    std::vector<unsigned long long> local_counts(K, 0);
+    std::vector<unsigned long long> global_counts(K, 0);
+
+    const size_t packed_len = K * d + K + 1;
+    std::vector<double> local_packed(packed_len, 0.0);
+    std::vector<double> global_packed(packed_len, 0.0);
+
+    // Pre-allocate cache-line padded thread-private buffers to eliminate false sharing
+    const size_t stride_sums = ((K * d + 7) / 8) * 8; // Multiple of 64 bytes (8 doubles)
+    const size_t stride_cnts = ((K + 7) / 8) * 8;     // Multiple of 64 bytes (8 ull)
     std::vector<double> all_thread_sums(active_threads * stride_sums, 0.0);
     std::vector<unsigned long long> all_thread_counts(active_threads * stride_cnts, 0ULL);
+    std::vector<double> all_thread_sse(active_threads * 8, 0.0); // Cache-line padded per-thread SSE
 
+#ifndef STANDALONE_OMP
     MPI_Barrier(MPI_COMM_WORLD);
-    double t_total_start = MPI_Wtime();
+#endif
+    double t_total_start = wall_time_sec();
     double total_comp_time = 0.0;
     double total_comm_time = 0.0;
 
     size_t iter = 0;
     double max_movement = 0.0;
-
-    const size_t K = cfg.K;
-    const size_t d = cfg.d;
+    double local_sse = 0.0;
+    double global_sse = 0.0;
 
     for (iter = 0; iter < cfg.max_iters; ++iter) {
-        double t_iter_start = MPI_Wtime();
+        double t_iter_start = wall_time_sec();
 
         std::fill(local_sums.begin(), local_sums.end(), 0.0);
         std::fill(local_counts.begin(), local_counts.end(), 0ULL);
+        local_sse = 0.0;
 
         if (cfg.use_gpu_target) {
-            // OpenMP Target GPU Offload Mode (runs on NVIDIA GPUs when compiled with nvc++ -mp=gpu)
             const double* raw_data = local_data.data();
             const double* raw_cent = centroids.data();
             double* raw_sums = local_sums.data();
             unsigned long long* raw_cnts = local_counts.data();
             size_t kd = K * d;
             size_t nd = local_N * d;
+            double gpu_sse = 0.0;
 
-            #pragma omp target teams distribute parallel for \
+            #pragma omp target teams distribute parallel for reduction(+:gpu_sse) \
                 map(to: raw_data[0:nd], raw_cent[0:kd]) \
-                map(tofrom: raw_sums[0:kd], raw_cnts[0:K])
+                map(tofrom: raw_sums[0:kd], raw_cnts[0:K], gpu_sse)
             for (size_t i = 0; i < local_N; ++i) {
                 const double* pt = &raw_data[i * d];
                 size_t best_cluster = 0;
@@ -347,6 +270,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
 
+                gpu_sse += best_dist;
                 #pragma omp atomic update
                 raw_cnts[best_cluster]++;
                 for (size_t j = 0; j < d; ++j) {
@@ -354,9 +278,10 @@ int main(int argc, char* argv[]) {
                     raw_sums[best_cluster * d + j] += pt[j];
                 }
             }
+            local_sse = gpu_sse;
         } else if (cfg.accum_mode == "atomic") {
-            // Design Choice B: Shared accumulators with OpenMP atomic updates (high contention)
-            #pragma omp parallel for schedule(runtime)
+            double accum_sse = 0.0;
+            #pragma omp parallel for schedule(runtime) reduction(+:accum_sse)
             for (size_t i = 0; i < local_N; ++i) {
                 const double* pt = &local_data[i * d];
                 size_t best_cluster = 0;
@@ -370,6 +295,7 @@ int main(int argc, char* argv[]) {
                     }
                 }
 
+                accum_sse += best_dist;
                 #pragma omp atomic update
                 local_counts[best_cluster]++;
                 double* sum_ptr = &local_sums[best_cluster * d];
@@ -378,13 +304,15 @@ int main(int argc, char* argv[]) {
                     sum_ptr[j] += pt[j];
                 }
             }
+            local_sse = accum_sse;
         } else {
-            // Design Choice A (Recommended): Cache-padded Thread-Private Accumulators (zero lock contention)
+            // Cache-padded Thread-Private Accumulators (zero lock contention)
             #pragma omp parallel
             {
                 int tid = omp_get_thread_num();
                 double* t_sums = &all_thread_sums[tid * stride_sums];
                 unsigned long long* t_cnts = &all_thread_counts[tid * stride_cnts];
+                double t_sse = 0.0;
 
                 std::fill(t_sums, t_sums + K * d, 0.0);
                 std::fill(t_cnts, t_cnts + K, 0ULL);
@@ -403,16 +331,19 @@ int main(int argc, char* argv[]) {
                         }
                     }
 
+                    t_sse += best_dist;
                     t_cnts[best_cluster]++;
                     double* sum_ptr = &t_sums[best_cluster * d];
                     for (size_t j = 0; j < d; ++j) {
                         sum_ptr[j] += pt[j];
                     }
                 }
+                all_thread_sse[tid * 8] = t_sse;
             }
 
-            // Deterministic sequential reduction across thread buffers (guarantees identical FP rounding!)
+            // Deterministic sequential reduction across thread buffers
             for (int t = 0; t < active_threads; ++t) {
+                local_sse += all_thread_sse[t * 8];
                 const double* t_sums = &all_thread_sums[t * stride_sums];
                 const unsigned long long* t_cnts = &all_thread_counts[t * stride_cnts];
                 for (size_t k = 0; k < K; ++k) {
@@ -424,16 +355,34 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        double t_comp_end = MPI_Wtime();
+        double t_comp_end = wall_time_sec();
 
-        // Global MPI Allreduce across nodes/ranks
-        MPI_Allreduce(local_sums.data(), global_sums.data(),
-                      static_cast<int>(K * d), MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-        MPI_Allreduce(local_counts.data(), global_counts.data(),
-                      static_cast<int>(K), MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
-        double t_comm_end = MPI_Wtime();
+#ifdef STANDALONE_OMP
+        global_sums = local_sums;
+        global_counts = local_counts;
+        global_sse = local_sse;
+#else
+        if (use_packed) {
+            for (size_t i = 0; i < K * d; ++i) local_packed[i] = local_sums[i];
+            for (size_t k = 0; k < K; ++k) local_packed[K * d + k] = static_cast<double>(local_counts[k]);
+            local_packed[K * d + K] = local_sse;
 
-        // Update centroids
+            MPI_Allreduce(local_packed.data(), global_packed.data(),
+                          static_cast<int>(packed_len), MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+
+            for (size_t i = 0; i < K * d; ++i) global_sums[i] = global_packed[i];
+            for (size_t k = 0; k < K; ++k) global_counts[k] = static_cast<unsigned long long>(std::llround(global_packed[K * d + k]));
+            global_sse = global_packed[K * d + K];
+        } else {
+            MPI_Allreduce(local_sums.data(), global_sums.data(),
+                          static_cast<int>(K * d), MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(local_counts.data(), global_counts.data(),
+                          static_cast<int>(K), MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+            MPI_Allreduce(&local_sse, &global_sse, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        }
+#endif
+        double t_comm_end = wall_time_sec();
+
         max_movement = 0.0;
         for (size_t k = 0; k < K; ++k) {
             unsigned long long count = global_counts[k];
@@ -449,7 +398,7 @@ int main(int argc, char* argv[]) {
                 if (movement > max_movement) max_movement = movement;
             }
         }
-        double t_iter_end = MPI_Wtime();
+        double t_iter_end = wall_time_sec();
 
         double iter_comp = (t_comp_end - t_iter_start) + (t_iter_end - t_comm_end);
         double iter_comm = (t_comm_end - t_comp_end);
@@ -459,6 +408,7 @@ int main(int argc, char* argv[]) {
         if (rank == 0 && (iter < 3 || (iter + 1) % 10 == 0 || max_movement < cfg.tolerance)) {
             std::cout << "Iteration " << std::setw(2) << (iter + 1)
                       << " | Max Shift: " << std::scientific << std::setprecision(4) << max_movement
+                      << " | SSE: " << std::scientific << std::setprecision(6) << global_sse
                       << " | Comp: " << std::fixed << std::setprecision(2) << (iter_comp * 1000.0) << " ms"
                       << " | Comm: " << std::fixed << std::setprecision(2) << (iter_comm * 1000.0) << " ms\n";
         }
@@ -470,13 +420,21 @@ int main(int argc, char* argv[]) {
         }
     }
 
+#ifndef STANDALONE_OMP
     MPI_Barrier(MPI_COMM_WORLD);
-    double t_total_end = MPI_Wtime();
+#endif
+    double t_total_end = wall_time_sec();
     double total_sec = t_total_end - t_total_start;
 
-    double max_comp_time = 0.0, max_comm_time = 0.0;
+    double final_local_sse = compute_local_sse(local_data, centroids, local_N, d, K);
+    double final_global_sse = final_local_sse;
+    double max_comp_time = total_comp_time, max_comm_time = total_comm_time;
+
+#ifndef STANDALONE_OMP
+    MPI_Allreduce(&final_local_sse, &final_global_sse, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
     MPI_Reduce(&total_comp_time, &max_comp_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
     MPI_Reduce(&total_comm_time, &max_comm_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+#endif
 
     if (rank == 0) {
         double comm_pct = (total_sec > 0.0) ? (100.0 * max_comm_time / total_sec) : 0.0;
@@ -493,14 +451,17 @@ int main(int argc, char* argv[]) {
                   << "Avg Time/Iter    : " << std::fixed << std::setprecision(2) << (total_sec * 1000.0 / iter) << " ms\n"
                   << "Throughput       : " << std::fixed << std::setprecision(2)
                   << ((static_cast<double>(total_N) * iter) / (total_sec * 1e6)) << " M points/sec\n"
+                  << "Final SSE (WCSS) : " << std::scientific << std::setprecision(6) << final_global_sse << "\n"
                   << "===========================================================\n";
 
-        save_centroids(cfg.output_file, centroids, K, d);
-        if (!cfg.use_synthetic) {
-            validate_centroids(cfg.ref_file, centroids, K, d);
+        save_centroids_with_sse(cfg.output_file, centroids, K, d, final_global_sse);
+        if (!cfg.weak_scaling) {
+            validate_centroids_and_sse(cfg.ref_file, centroids, K, d, final_global_sse);
         }
     }
 
+#ifndef STANDALONE_OMP
     MPI_Finalize();
+#endif
     return 0;
 }
