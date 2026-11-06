@@ -45,7 +45,10 @@ def run_mpi(np, args, oversubscribe=False):
 
     err_match = re.search(r"Max Abs Error\s*:\s*([\d.eE+-]+)", out)
     max_err = float(err_match.group(1)) if err_match else 0.0
-    return total_s, comp_s, comm_s, comm_pct, avg_iter_ms, throughput, final_sse, max_err
+
+    n_match = re.search(r"Total Points\s*:\s*(\d+)", out)
+    n_total = int(n_match.group(1)) if n_match else 597638
+    return total_s, comp_s, comm_s, comm_pct, avg_iter_ms, throughput, final_sse, max_err, n_total
 
 
 def main():
@@ -86,7 +89,7 @@ def main():
         ])
 
         for p in ranks_list:
-            tot_s, comp_s, comm_s, comm_pct, iter_ms, thr, sse, max_err = run_mpi(
+            tot_s, comp_s, comm_s, comm_pct, iter_ms, thr, sse, max_err, n_total = run_mpi(
                 p, ["-f", DATA_CSV, "-r", REF_TXT, "-k", "8", "-m", "50", "-t", "0.0"],
                 oversubscribe=args.oversubscribe,
             )
@@ -94,10 +97,10 @@ def main():
                 t1_strong = tot_s
             speedup = t1_strong / tot_s
             eff_pct = (speedup / p) * 100.0
-            n_per_rank = 597638 // p
+            n_per_rank = n_total // p
 
             writer.writerow([
-                p, 597638, n_per_rank, f"{tot_s:.4f}", f"{comp_s:.4f}", f"{comm_s:.4f}",
+                p, n_total, n_per_rank, f"{tot_s:.4f}", f"{comp_s:.4f}", f"{comm_s:.4f}",
                 f"{comm_pct:.1f}", f"{iter_ms:.2f}", f"{thr:.2f}", f"{speedup:.2f}",
                 f"{eff_pct:.1f}", f"{max_err:.3e}", f"{sse:.6e}"
             ])
@@ -115,7 +118,7 @@ def main():
         writer.writerow(["P", "allreduce_mode", "total_time_s", "comp_time_s", "comm_time_s", "comm_pct", "final_sse", "max_abs_err"])
         for p in ranks_list:
             for mode in ["separate", "packed"]:
-                tot_s, comp_s, comm_s, comm_pct, _, _, sse, max_err = run_mpi(
+                tot_s, comp_s, comm_s, comm_pct, _, _, sse, max_err, _ = run_mpi(
                     p, ["-f", DATA_CSV, "-r", REF_TXT, "-k", "8", "-m", "50", "-t", "0.0", "-allreduce", mode],
                     oversubscribe=args.oversubscribe,
                 )
@@ -143,7 +146,7 @@ def main():
         ])
 
         for p in ranks_list:
-            tot_s, comp_s, comm_s, comm_pct, iter_ms, thr, sse, _ = run_mpi(
+            tot_s, comp_s, comm_s, comm_pct, iter_ms, thr, sse, _, _ = run_mpi(
                 p, ["-w", "-n", str(n_per_rank_weak), "-d", "28", "-k", "8", "-m", "30", "-t", "0.0"],
                 oversubscribe=args.oversubscribe,
             )
