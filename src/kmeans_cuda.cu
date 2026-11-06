@@ -23,6 +23,20 @@
         }                                                                      \
     } while (0)
 
+// Portable atomicAdd for double on older CUDA architectures (< sm_60)
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ < 600
+static __inline__ __device__ double atomicAdd(double* address, double val) {
+    unsigned long long int* address_as_ull = (unsigned long long int*)address;
+    unsigned long long int old = *address_as_ull, assumed;
+    do {
+        assumed = old;
+        old = atomicCAS(address_as_ull, assumed,
+                        __double_as_longlong(val + __longlong_as_double(assumed)));
+    } while (assumed != old);
+    return __longlong_as_double(old);
+}
+#endif
+
 // CUDA kernel using shared-memory cached centroids and block-level partial reduction (including SSE)
 __global__ void kmeans_assign_accumulate_kernel(const double* __restrict__ d_data,
                                                 const double* __restrict__ d_centroids,
