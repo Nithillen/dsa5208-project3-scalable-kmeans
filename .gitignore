@@ -1,0 +1,19 @@
+# Compiled executables and object files
+bin/
+*.o
+*.out
+
+# Large dataset files (>100 MB GitHub limit; regenerate via scripts/prepare_higgs_data.py)
+data/*.csv
+data/*.txt
+data/*.gz
+
+# HPC batch logs (per project instructions: do not submit raw log files)
+*.log
+*.o[0-9]*
+*.e[0-9]*
+
+# macOS & Python cache
+.DS_Store
+__pycache__/
+*.pyc
