@@ -28,13 +28,13 @@ nvc++ -O3 -std=c++17 -mp=gpu -I$(dirname $(which mpicxx))/../include -L$(dirname
 echo "[Step 2] Running CUDA GPU K-Means Benchmark..."
 for K in 8 16 32; do
     echo "--- Running CUDA GPU with K=$K ---"
-    mpirun -np 1 ./bin/kmeans_cuda -f data/higgs_clean.csv -r results/centroids_serial.txt -k $K -m 50 -t 0.0
+    mpirun --bind-to none -np 1 ./bin/kmeans_cuda -f data/higgs_clean.csv -r results/centroids_serial.txt -k $K -m 50 -t 0.0
 done
 
 # Run OpenMP GPU Target Offload if compiled
 if [ -f bin/kmeans_omp_gpu ]; then
     echo "[Step 3] Running OpenMP GPU Target Offload (-mp=gpu)..."
-    mpirun -np 1 ./bin/kmeans_omp_gpu -f data/higgs_clean.csv -r results/centroids_serial.txt -g -k 8 -m 50 -t 0.0
+    mpirun --bind-to none -np 1 ./bin/kmeans_omp_gpu -f data/higgs_clean.csv -r results/centroids_serial.txt -g -k 8 -m 50 -t 0.0
 fi
 
 echo "=================================================================="

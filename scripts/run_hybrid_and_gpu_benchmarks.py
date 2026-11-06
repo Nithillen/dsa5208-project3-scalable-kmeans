@@ -35,7 +35,7 @@ def run_omp(np, threads, accum="private", sched="static", K=8, iters=50, oversub
             "-k", str(K), "-m", str(iters), "-t", "0.0"
         ]
     else:
-        cmd = [MPIRUN]
+        cmd = [MPIRUN, "--bind-to", "none"]
         if oversubscribe:
             cmd.append("--oversubscribe")
         cmd.extend([
@@ -60,7 +60,7 @@ def run_omp(np, threads, accum="private", sched="static", K=8, iters=50, oversub
 
 
 def run_gpu(np, threads, K=8, iters=50, oversubscribe=False):
-    cmd = [MPIRUN]
+    cmd = [MPIRUN, "--bind-to", "none"]
     if oversubscribe:
         cmd.append("--oversubscribe")
 
