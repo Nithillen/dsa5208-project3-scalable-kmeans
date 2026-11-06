@@ -5,6 +5,11 @@
 **Algorithm:** Lloyd's K-Means Clustering (Iterative Expectation–Maximization)  
 **Dataset:** [UCI Machine Learning Repository — HIGGS Dataset (ID #280)](https://archive.ics.uci.edu/dataset/280/higgs) ($N = 597,638$ collision events $\times$ $d = 28$ kinematic features) + Multi-Million Point Synthetic Gaussian Generator for Weak Scaling up to 256 CPU Cores.
 
+### Key Project Documents in This Repository:
+- **[`DSA5208_Project3_Report.pdf`](DSA5208_Project3_Report.pdf):** Complete compiled academic PDF report containing all 7 log-log scaling figures, mathematical formulations, parallel design discussions, validation tables, HIGGS physics analysis, and AI usage declaration.
+- **[`STEP_BY_STEP_WORKFLOW_README.md`](STEP_BY_STEP_WORKFLOW_README.md):** Detailed step-by-step log of how the dataset was downloaded/extracted (file counts & exact byte/MB sizes), every terminal command executed at each stage, and the exact runtime differences across all methods.
+- **[`PROJECT_EXPLANATION_AND_RESULTS.txt`](PROJECT_EXPLANATION_AND_RESULTS.txt):** Plain-text summary of all implementations, dataset sizes, runtime comparisons, and NUS Vanda HPC submission instructions.
+
 ---
 
 ## 1. Why This Algorithm & Dataset Were Chosen
