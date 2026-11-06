@@ -1,0 +1,42 @@
+#!/bin/bash
+#PBS -P personal-nithillen.jayaseelan
+#PBS -j oe
+#PBS -N kmeans_gpu_benchmark
+#PBS -l walltime=00:30:00
+#PBS -l select=1:ncpus=36:mpiprocs=1:ompthreads=36:ngpus=1
+
+cd $PBS_O_WORKDIR || exit 1
+
+echo "=================================================================="
+echo "  DSA5208 Project 3: Vanda NVIDIA GPU Benchmark                   "
+echo "  Host Node : $(hostname)                                         "
+echo "  Date      : $(date)                                             "
+echo "=================================================================="
+nvidia-smi
+
+# Load CUDA & NVHPC modules
+module load nvhpc-hpcx-cuda12/26.1 2>/dev/null || module load cuda 2>/dev/null || true
+
+mkdir -p bin results
+
+# Compile CUDA and Hybrid OpenMP GPU Target executables
+echo "[Step 1] Compiling CUDA and OpenMP GPU targets..."
+nvcc -O3 -std=c++17 -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda
+nvc++ -O3 -std=c++17 -mp=gpu -I$(dirname $(which mpicxx))/../include -L$(dirname $(which mpicxx))/../lib -lmpi src/kmeans_omp.cpp -o bin/kmeans_omp_gpu 2>/dev/null || true
+
+# Run CUDA GPU Benchmark on full HIGGS dataset across K={8, 16, 32}
+echo "[Step 2] Running CUDA GPU K-Means Benchmark..."
+for K in 8 16 32; do
+    echo "--- Running CUDA GPU with K=$K ---"
+    mpirun -np 1 ./bin/kmeans_cuda -f data/higgs_clean.csv -r results/centroids_serial.txt -k $K -m 50 -t 0.0
+done
+
+# Run OpenMP GPU Target Offload if compiled
+if [ -f bin/kmeans_omp_gpu ]; then
+    echo "[Step 3] Running OpenMP GPU Target Offload (-mp=gpu)..."
+    mpirun -np 1 ./bin/kmeans_omp_gpu -f data/higgs_clean.csv -r results/centroids_serial.txt -g -k 8 -m 50 -t 0.0
+fi
+
+echo "=================================================================="
+echo "  Vanda GPU Benchmark Complete!                                   "
+echo "=================================================================="

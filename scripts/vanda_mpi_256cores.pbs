@@ -2,20 +2,17 @@
 #PBS -P personal-nithillen.jayaseelan
 #PBS -j oe
 #PBS -N kmeans_mpi_256
-#PBS -q parallel
-#PBS -l select=4:ncpus=64:mpiprocs=64:ompthreads=1:mem=64gb
 #PBS -l walltime=00:40:00
+#PBS -l select=4:ncpus=64:mpiprocs=64:ompthreads=1:mem=240gb
 
 cd $PBS_O_WORKDIR || exit 1
 
-# Load recommended CUDA-aware OpenMPI + NVHPC module on Vanda (Lecture 12 Slide 40)
-module load nvhpc-hpcx-cuda12/26.1
+module load nvhpc-hpcx-cuda12/26.1 2>/dev/null || module load OpenMPI 2>/dev/null || true
 
 mkdir -p bin results
 g++ -O3 -std=c++17 src/kmeans_serial.cpp -o bin/kmeans_serial
 mpicxx -O3 -std=c++17 src/kmeans_mpi.cpp -o bin/kmeans_mpi
 
-# Ensure reference serial centroids exist with SSE header
 if [ ! -f results/centroids_serial.txt ]; then
     ./bin/kmeans_serial -f data/higgs_clean.csv -k 8 -m 50 -t 1e-5 -o results/centroids_serial.txt
 fi
@@ -28,8 +25,7 @@ python3 scripts/run_mpi_scaling.py --ranks "1,2,4,8,16,32,64,128,256"
 echo "=================================================================="
 echo "  Vanda HPC: Full 11,000,000-Row HIGGS Parallel I/O + Packed MPI  "
 echo "=================================================================="
-if [ -f data/higgs_11m.csv ]; then
-    for P in 32 64 128 256; do
-        mpirun -np $P ./bin/kmeans_mpi -f data/higgs_11m.csv -io parallel -p -k 8 -m 50 -t 1e-5
-    done
-fi
+for P in 32 64 128 256; do
+    echo "--- Testing 11M rows on P=$P ranks with Parallel I/O + Packed Allreduce ---"
+    mpirun -np $P ./bin/kmeans_mpi -f data/higgs_clean.csv -io parallel -p -k 8 -m 50 -t 1e-5
+done
