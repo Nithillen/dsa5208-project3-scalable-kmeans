@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -P dsa5208
+#PBS -P personal-nithillen.jayaseelan
 #PBS -j oe
 #PBS -N kmeans_mpi_256
 #PBS -q parallel
