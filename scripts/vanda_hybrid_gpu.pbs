@@ -1,0 +1,39 @@
+#!/bin/bash
+#PBS -P dsa5208
+#PBS -j oe
+#PBS -N kmeans_hybrid_gpu
+#PBS -q gpu
+#PBS -l select=1:ncpus=72:mpiprocs=8:ompthreads=9:ngpus=1:mem=64gb
+#PBS -l walltime=00:30:00
+
+cd $PBS_O_WORKDIR || exit 1
+
+# Load recommended CUDA-aware OpenMPI + NVHPC module on Vanda (Lecture 12 Slide 40)
+module load nvhpc-hpcx-cuda12/26.1
+
+mkdir -p bin results
+mpicxx -O3 -std=c++17 -fopenmp src/kmeans_omp.cpp -o bin/kmeans_omp
+nvc++ -O3 -std=c++17 -mp=gpu -I$(dirname $(which mpicxx))/../include -L$(dirname $(which mpicxx))/../lib -lmpi src/kmeans_omp.cpp -o bin/kmeans_omp_gpu
+nvcc -O3 -std=c++17 -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda
+
+echo "=================================================================="
+echo "  1. Vanda 72-Core Node: Hybrid MPI Ranks (P) x OpenMP Threads (T)"
+echo "=================================================================="
+for pair in "1:72" "2:36" "4:18" "8:9" "18:4" "36:2" "72:1"; do
+    P=${pair%:*}
+    T=${pair#*:}
+    echo "--- Testing P=$P MPI Ranks x T=$T OpenMP Threads (Total 72 Cores) ---"
+    OMP_NUM_THREADS=$T mpirun -np $P ./bin/kmeans_omp -f data/higgs_clean.csv -r results/centroids_serial.txt -threads $T -k 8 -m 50 -t 0.0
+done
+
+echo "=================================================================="
+echo "  2. Vanda NVIDIA GPU: OpenMP Target Offload (-mp=gpu)            "
+echo "=================================================================="
+mpirun -np 1 ./bin/kmeans_omp_gpu -f data/higgs_clean.csv -r results/centroids_serial.txt -g -k 8 -m 50 -t 0.0
+
+echo "=================================================================="
+echo "  3. Vanda NVIDIA GPU: Hybrid MPI + CUDA Kernel                   "
+echo "=================================================================="
+for K in 8 16 32; do
+    mpirun -np 1 ./bin/kmeans_cuda -f data/higgs_clean.csv -r results/centroids_serial.txt -k $K -m 50 -t 0.0
+done
