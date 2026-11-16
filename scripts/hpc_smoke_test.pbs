@@ -1,0 +1,64 @@
+#!/bin/bash
+#PBS -P personal-amitejsingh.datta
+#PBS -j oe
+#PBS -k oed
+#PBS -N kmeans_smoke_test
+#PBS -l select=1:ncpus=4:mpiprocs=4:ompthreads=1:mem=8gb
+#PBS -l walltime=00:05:00
+
+cd $PBS_O_WORKDIR || exit 1
+
+echo "=================================================================="
+echo "  DSA5208 HPC SMOKE TEST: ENVIRONMENT & PROVENANCE                "
+echo "=================================================================="
+echo "Compute Node   : $(hostname -f)"
+echo "Execution Date : $(date -u)"
+echo "Git Commit     : $(git rev-parse HEAD 2>/dev/null || echo 'N/A')"
+echo "CPU Model      : $(lscpu | grep 'Model name:' | sed 's/Model name:[ \t]*//')"
+
+# 1. Load Verified Vanda Module
+module load nvhpc-hpcx-cuda12/26.1
+echo "Loaded Modules :"
+module list 2>&1
+
+# 2. Tell OpenMPI to respect PBS Pro cgroups and disable conflicting hwloc process binding
+export OMPI_MCA_hwloc_base_binding_policy=none
+
+# 3. Compile CPU Binaries on Compute Node
+mkdir -p bin results/smoke_test
+g++ -O3 -std=c++17 src/kmeans_serial.cpp -o bin/kmeans_serial
+mpicxx -O3 -std=c++17 src/kmeans_mpi.cpp -o bin/kmeans_mpi
+mpicxx -O3 -std=c++17 -fopenmp src/kmeans_omp.cpp -o bin/kmeans_omp
+
+# Fast synthetic parameters: 50,000 points, 28 dimensions, K=8, 20 iterations
+TEST_ARGS="-n 50000 -d 28 -k 8 -m 20 -t 0.0"
+
+echo ""
+echo "=================================================================="
+echo "  1. Running Serial Reference Baseline (1 Core)                   "
+echo "=================================================================="
+./bin/kmeans_serial $TEST_ARGS -o results/smoke_test/centroids_serial.txt
+
+echo ""
+echo "=================================================================="
+echo "  2. Running Pure MPI Baseline (P=1, P=2, P=4 Ranks)              "
+echo "=================================================================="
+for P in 1 2 4; do
+    echo "--- Testing Pure MPI with P=$P ranks ---"
+    mpirun --bind-to none -np $P ./bin/kmeans_mpi $TEST_ARGS -o results/smoke_test/centroids_mpi_p${P}.txt
+done
+
+echo ""
+echo "=================================================================="
+echo "  3. Running Hybrid MPI+OpenMP (P=2 Ranks x T=2 Threads = 4 Cores) "
+echo "=================================================================="
+OMP_NUM_THREADS=2 mpirun --bind-to none -np 2 ./bin/kmeans_omp $TEST_ARGS -threads 2 -a private -s static -o results/smoke_test/centroids_omp_p2t2.txt
+
+echo ""
+echo "=================================================================="
+echo "  4. Verifying Output Centroids Generated                         "
+echo "=================================================================="
+ls -lh results/smoke_test/
+
+echo ""
+echo "Smoke test completed successfully at $(date -u)"

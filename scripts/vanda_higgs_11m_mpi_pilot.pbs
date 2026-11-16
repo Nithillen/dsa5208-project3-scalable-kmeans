@@ -1,0 +1,238 @@
+#!/bin/bash
+#PBS -P personal-amitejsingh.datta
+#PBS -j oe
+#PBS -k oed
+#PBS -N higgs_11m_mpi_pilot
+#PBS -l select=1:ncpus=16:mpiprocs=16:ompthreads=1:mem=64gb
+#PBS -l walltime=01:00:00
+
+# ==============================================================================
+# DSA5208 Project 3: Vanda 11M HIGGS Pure MPI Strong Scaling Pilot Benchmark
+#
+# Execution Environment: NUS Vanda Supercomputer (PBS Pro, Dual Intel Xeon Platinum 8452Y)
+# Workload: Complete 11,000,000-row UCI HIGGS dataset (28 features, IEEE 754 float64)
+# Scaling Configurations: P in {1, 2, 4, 8, 16} MPI ranks, 3 repetitions per config
+# Fixed Workload: 30 iterations, convergence tolerance = 0.0 (fixed-step benchmark)
+#
+# TIMING REGION DEFINITIONS & COVERAGE (Accurately reflecting src/kmeans_mpi.cpp):
+# 1. Total Elapsed Time (total_time_s):
+#    - Wall-clock time measured barrier-to-barrier across all MPI ranks:
+#        MPI_Barrier(MPI_COMM_WORLD) -> t_total_start = MPI_Wtime()
+#        ... 30 K-Means Iterations ...
+#        MPI_Barrier(MPI_COMM_WORLD) -> t_total_end = MPI_Wtime()
+#    - Excludes one-time startup: CSV parsing, initial centroid setup, MPI_Scatterv,
+#      and final centroid disk write.
+# 2. Local Computation Time (comp_time_s):
+#    - Per-iteration time spent in local distance calculation, point assignment,
+#      local coordinate accumulation, and global centroid update division.
+#    - Reduced across all ranks via MPI_Reduce(..., MPI_MAX) to report bottleneck rank.
+# 3. MPI Communication Time (comm_time_s):
+#    - Per-iteration time spent specifically in the two MPI_Allreduce collective calls
+#      (global sums and global counts).
+#    - Reduced across all ranks via MPI_Reduce(..., MPI_MAX) to report maximum wait.
+# ==============================================================================
+
+# Fail safely on any error, unset variable, or pipe failure
+set -euo pipefail
+
+cd "$PBS_O_WORKDIR"
+
+echo "=================================================================="
+echo "  DSA5208 VANDA PILOT: 11M HIGGS MPI STRONG SCALING BENCHMARK     "
+echo "=================================================================="
+echo "Execution Node : $(hostname -f)"
+echo "Execution Date : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+# 1. Capture Comprehensive Provenance
+GIT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "N/A")
+GIT_DIRTY=$(git status --porcelain 2>/dev/null | grep -q . && echo "DIRTY" || echo "CLEAN")
+echo "Git Commit     : ${GIT_COMMIT} (${GIT_DIRTY})"
+
+CPU_MODEL=$(lscpu | grep 'Model name:' | sed 's/Model name:[ \t]*//' | tr -s ' ' | tr ',' ' ')
+echo "CPU Model      : ${CPU_MODEL}"
+echo "PBS Allocation : ncpus=16, mpiprocs=16, mem=64gb"
+
+# 2. Load Toolchain and Record Versions
+module load nvhpc-hpcx-cuda12/26.1
+echo "--- Loaded Modules ---"
+module list 2>&1
+
+COMPILER_VER=$(g++ --version | head -n 1)
+MPI_VER=$(mpicxx -v 2>&1 | head -n 1)
+echo "Compiler       : ${COMPILER_VER}"
+echo "MPI Toolchain  : ${MPI_VER}"
+
+# 3. Configure MPI Process Placement & Environment
+export OMPI_MCA_hwloc_base_binding_policy=none
+export UCX_WARN_UNUSED_ENV_VARS=n
+
+# 4. Create Isolated Output Directories
+PILOT_DIR="results/vanda_pilot_11m"
+LOG_DIR="${PILOT_DIR}/logs"
+CENT_DIR="${PILOT_DIR}/centroids"
+mkdir -p bin "${LOG_DIR}" "${CENT_DIR}" data
+
+DATA_CSV="data/higgs_clean_11m.csv"
+DATA_LABELS="data/higgs_labels_11m.txt"
+REF_CENTROIDS="${PILOT_DIR}/centroids_serial_reference_11m.txt"
+MANIFEST_FILE="${PILOT_DIR}/serial_reference_manifest.json"
+RAW_CSV="${PILOT_DIR}/vanda_higgs_11m_mpi_pilot_raw.csv"
+SUMMARY_CSV="${PILOT_DIR}/vanda_higgs_11m_mpi_scaling_summary.csv"
+
+# 5. Validate Dataset Presence & Checksum
+echo "--- Dataset Verification ---"
+if [ ! -f "$DATA_CSV" ]; then
+    echo "[FATAL ERROR] Dataset $DATA_CSV not found!" >&2
+    echo "Please run: python3 scripts/prepare_higgs_data.py -n 11000000 --full-precision --output-csv $DATA_CSV --output-labels $DATA_LABELS" >&2
+    exit 1
+fi
+if [ ! -f "$DATA_LABELS" ]; then
+    echo "[FATAL ERROR] Label file $DATA_LABELS not found!" >&2
+    exit 1
+fi
+
+echo "Validating dataset integrity via scripts/validate_higgs_dataset.py..."
+python3 scripts/validate_higgs_dataset.py --csv "$DATA_CSV" --labels "$DATA_LABELS" -n 11000000 -d 28
+
+DATA_MD5=$(md5sum "$DATA_CSV" | awk '{print $1}')
+echo "Dataset MD5    : ${DATA_MD5}"
+
+# 6. Compile Executables & Check Exit Codes
+echo "--- Compiling Implementations ---"
+g++ -O3 -std=c++17 src/kmeans_serial.cpp -o bin/kmeans_serial
+mpicxx -O3 -std=c++17 src/kmeans_mpi.cpp -o bin/kmeans_mpi
+echo "Build complete: bin/kmeans_serial and bin/kmeans_mpi successfully generated."
+
+# 7. Initialize Raw CSV Header if not present
+if [ ! -f "$RAW_CSV" ]; then
+    echo "run_id,platform,node_model,P,repetition,N,d,K,iterations,total_time_s,comp_time_s,comm_time_s,comm_pct,throughput_mpts_s,max_abs_err,centroid_rmse,validation_status,git_commit,git_dirty,data_md5" > "$RAW_CSV"
+fi
+
+# 8. Protect Serial Reference with Verified Manifest
+SERIAL_GEN_LOG="${LOG_DIR}/serial_11m_reference_gen.log"
+REUSE_REF=0
+
+if [ -f "$MANIFEST_FILE" ] && [ -f "$REF_CENTROIDS" ]; then
+    echo "--- Verifying Existing Serial Reference Manifest ---"
+    if python3 scripts/manage_reference_manifest.py verify \
+        --manifest "$MANIFEST_FILE" \
+        --dataset-md5 "$DATA_MD5" \
+        --ref-centroids "$REF_CENTROIDS" \
+        --k 8 \
+        --iterations 30 \
+        --tolerance 0.0; then
+        echo "Existing serial reference manifest is VALID."
+        REUSE_REF=1
+    else
+        echo "[WARNING] Serial reference manifest mismatch. Refusing to reuse stale centroids."
+        REUSE_REF=0
+    fi
+fi
+
+if [ "$REUSE_REF" -eq 0 ]; then
+    echo "--- Generating Fresh 1-Core Serial Reference Centroids (30 Fixed Iters) ---"
+    ./bin/kmeans_serial -f "$DATA_CSV" -l "$DATA_LABELS" -k 8 -m 30 -t 0.0 -o "$REF_CENTROIDS" > "$SERIAL_GEN_LOG" 2>&1
+    python3 scripts/manage_reference_manifest.py create \
+        --manifest "$MANIFEST_FILE" \
+        --dataset-path "$DATA_CSV" \
+        --dataset-md5 "$DATA_MD5" \
+        --ref-centroids "$REF_CENTROIDS" \
+        --log-file "$SERIAL_GEN_LOG" \
+        --git-commit "$GIT_COMMIT" \
+        --git-dirty "$GIT_DIRTY" \
+        --k 8 \
+        --iterations 30 \
+        --tolerance 0.0 \
+        --init-method "deterministic_stride_k_times_N_div_K" \
+        --precision "float64_ieee754" \
+        --node-model "$CPU_MODEL"
+fi
+
+T_SERIAL_REF=$(python3 -c "import json; m=json.load(open('${MANIFEST_FILE}')); print(m['serial_total_time_s'])")
+echo "Serial Reference Baseline Time : ${T_SERIAL_REF} seconds"
+
+# 9. Execute Pure MPI Strong Scaling Pilot (P in {1, 2, 4, 8, 16}, 3 Repetitions)
+echo "=================================================================="
+echo "  Executing MPI Strong Scaling (P=1, 2, 4, 8, 16 | 3 Reps each)   "
+echo "=================================================================="
+
+RUN_IDX=1
+for P in 1 2 4 8 16; do
+    for REP in 1 2 3; do
+        # Robust structured CSV check: skip completed configurations
+        if python3 scripts/check_completed_run.py --csv "$RAW_CSV" -p "$P" --rep "$REP"; then
+            echo "[SKIP] Configuration P=${P}, Rep=${REP} already completed and verified in $RAW_CSV"
+            RUN_IDX=$((RUN_IDX + 1))
+            continue
+        fi
+
+        OUT_LOG="${LOG_DIR}/mpi_11m_p${P}_rep${REP}.log"
+        VAL_LOG="${LOG_DIR}/verify_mpi_11m_p${P}_rep${REP}.log"
+        OUT_CENT="${CENT_DIR}/centroids_mpi_11m_p${P}_rep${REP}.txt"
+        CMD="mpirun --bind-to none --report-bindings -np ${P} ./bin/kmeans_mpi -f ${DATA_CSV} -r ${REF_CENTROIDS} -k 8 -m 30 -t 0.0 -o ${OUT_CENT}"
+
+        echo ">>> [Run ${RUN_IDX}] P=${P} Ranks | Repetition ${REP}/3"
+        echo "    Command: ${CMD}"
+
+        # Execute MPI application and check exit status
+        if ! ${CMD} > "${OUT_LOG}" 2>&1; then
+            echo "[FATAL ERROR] MPI execution failed for P=${P}, Rep=${REP}! Check ${OUT_LOG}" >&2
+            exit 1
+        fi
+
+        # Parse timing metrics from MPI benchmark summary
+        TOT_TIME=$(awk -F': ' '/Total Time/ {split($2, a, " "); print a[1]}' "${OUT_LOG}")
+        COMP_TIME=$(awk -F': ' '/Computation Time/ {split($2, a, " "); print a[1]}' "${OUT_LOG}")
+        COMM_TIME=$(awk -F': ' '/MPI_Allreduce Tm/ {split($2, a, " "); print a[1]}' "${OUT_LOG}")
+        COMM_PCT=$(grep "MPI_Allreduce Tm" "${OUT_LOG}" | grep -o '([0-9.]*%)' | tr -d '(%)')
+        THROUGHPUT=$(awk -F': ' '/Throughput/ {split($2, a, " "); print a[1]}' "${OUT_LOG}")
+
+        # Strict validation: Fail explicitly if any required timing field is missing
+        if [ -z "$TOT_TIME" ] || [ -z "$COMP_TIME" ] || [ -z "$COMM_TIME" ] || [ -z "$THROUGHPUT" ]; then
+            echo "[FATAL ERROR] Parsing failed: required timing fields missing from ${OUT_LOG}!" >&2
+            exit 1
+        fi
+
+        # Independent Numerical Validation using verify_clustering.py
+        if python3 tests/verify_clustering.py --cand "${OUT_CENT}" --ref "${REF_CENTROIDS}" --tol 1e-9 > "${VAL_LOG}" 2>&1; then
+            VAL_STATUS="PASSED"
+        else
+            VAL_STATUS="FAILED_VALIDATION"
+        fi
+        cat "${VAL_LOG}" >> "${OUT_LOG}"
+
+        # Extract numerical error metrics from independent verifier log
+        MAX_ERR=$(awk -F': ' '/Max Abs Error/ {split($2, a, " "); print a[1]}' "${VAL_LOG}")
+        RMSE=$(awk -F': ' '/Centroid RMSE/ {split($2, a, " "); print a[1]}' "${VAL_LOG}")
+
+        # Fail safely: if verification fails, preserve logs and stop immediately
+        if [ "$VAL_STATUS" != "PASSED" ]; then
+            echo "[FATAL ERROR] Independent numerical validation failed for P=${P}, Rep=${REP}!" >&2
+            echo "  Candidate Centroids: ${OUT_CENT}" >&2
+            echo "  Reference Centroids: ${REF_CENTROIDS}" >&2
+            echo "  Validation Log     : ${VAL_LOG}" >&2
+            exit 1
+        fi
+
+        # Append validated raw record to CSV (no unverified calculations)
+        echo "${RUN_IDX},Vanda,${CPU_MODEL},${P},${REP},11000000,28,8,30,${TOT_TIME},${COMP_TIME},${COMM_TIME},${COMM_PCT},${THROUGHPUT},${MAX_ERR},${RMSE},${VAL_STATUS},${GIT_COMMIT},${GIT_DIRTY},${DATA_MD5}" >> "${RAW_CSV}"
+
+        echo "    Completed: Total=${TOT_TIME}s, Comp=${COMP_TIME}s, Comm=${COMM_TIME}s (${COMM_PCT}%), Throughput=${THROUGHPUT} Mpts/s, MaxErr=${MAX_ERR}, Status=${VAL_STATUS}"
+        RUN_IDX=$((RUN_IDX + 1))
+    done
+done
+
+echo ""
+echo "=================================================================="
+echo "  ALL BENCHMARK RUNS COMPLETED SUCCESSFULLY                       "
+echo "  Raw Records Saved: ${RAW_CSV}                                   "
+echo "=================================================================="
+
+# 10. Postprocess Metrics: Median Speedup, Parallel Efficiency & Summary Report
+echo "--- Computing Median-Based Scaling Metrics & Summary Table ---"
+python3 scripts/compute_scaling_metrics.py \
+    --raw-csv "${RAW_CSV}" \
+    --manifest "${MANIFEST_FILE}" \
+    --output-summary "${SUMMARY_CSV}"
+
+echo "Pilot benchmark complete. Summary generated at ${SUMMARY_CSV}."

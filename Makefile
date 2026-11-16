@@ -18,13 +18,17 @@ else
     CUDA_TARGET =
 endif
 
-TARGETS = bin/kmeans_serial bin/kmeans_mpi bin/kmeans_omp $(METAL_TARGET) $(CUDA_TARGET)
+TARGETS = bin/kmeans_serial bin/kmeans_omp_standalone bin/kmeans_mpi bin/kmeans_omp $(METAL_TARGET) $(CUDA_TARGET)
 
 all: $(TARGETS)
 
 bin/kmeans_serial: src/kmeans_serial.cpp
 	mkdir -p bin results
 	$(CXX) $(CXXFLAGS) $< -o $@
+
+bin/kmeans_omp_standalone: src/kmeans_omp_standalone.cpp src/kmeans_common.h
+	mkdir -p bin results
+	$(CXX) $(CXXFLAGS) $(OMP_FLAGS) -Isrc $< -o $@
 
 bin/kmeans_mpi: src/kmeans_mpi.cpp
 	mkdir -p bin results
@@ -43,4 +47,4 @@ bin/kmeans_cuda: src/kmeans_cuda.cu
 	$(NVCC) -O3 -std=c++17 -ccbin $(MPICXX) $< -o $@
 
 clean:
-	rm -rf bin results/*.txt
+	rm -rf bin results/smoke_test results/centroids_omp_standalone.txt
