@@ -414,7 +414,7 @@ Figure 5 and Table 9 present all 21 measured $(P, T)$ hybrid combinations across
 3. *`src/kmeans_metal_gpu.mm` (`MPI + Apple Metal GPU Shader`):* Maps unified host/GPU buffers (`MTLResourceStorageModeShared`, zero PCIe copy overhead) on Apple Silicon M5, caches centroids in `threadgroup float s_centroids[1024]`, and executes fused multiply-add (`fma`) FP32 distance evaluations across 256-thread threadgroups with host FP64 accumulation.
 
 == Empirical NVIDIA A40 (`N = 11M`) & Apple M5 Metal GPU Results
-Figure 6 and Tables 10–12 report the authentic GPU measurements across cluster counts $K in {8, 16, 32}$ and 50-iteration backend comparisons.
+Figure 6 and Tables 10–12 distinguish two complementary evaluation protocols: *30-iteration cluster scaling* across $K in \{8, 16, 32\}$ (Table 10 for Vanda A40; Table 12 for Apple M5 Metal) and the *50-iteration full convergence-budget comparison* at $K = 8$ across all Vanda CPU and GPU backends (Table 11).
 
 #figure(
   image("figures/fig6_gpu_scaling.png", width: 100%),
@@ -441,7 +441,7 @@ Figure 6 and Tables 10–12 report the authentic GPU measurements across cluster
     [16], [NVIDIA A40], [32.7197], [10.1117], [5.7795], [5.7787], [5.66x], [*1.75x*], [57.10], [`1.521e-12`],
     [32], [NVIDIA A40], [58.3357], [16.0496], [12.4475], [12.4466], [4.69x], [1.29x], [26.51], [`1.562e-12`],
   ),
-  caption: [Vanda NVIDIA A40 CUDA GPU scaling on all 11,000,000 HIGGS rows (`results/gpu_benchmark.csv`, $30 "iterations"$).]
+  caption: [30-iteration Vanda NVIDIA A40 CUDA GPU scaling across $K in \{8, 16, 32\}$ on all 11,000,000 HIGGS rows (`results/gpu_benchmark.csv`).]
 )
 
 #grid(
@@ -465,7 +465,7 @@ Figure 6 and Tables 10–12 report the authentic GPU measurements across cluster
         [*Native CUDA (`__shared__`, NVIDIA A40)*], [*5.0759*], [*108.36*], [*9.67x*],
       )
     },
-    caption: [50-iteration Vanda backend comparison ($N=11"M", K=8$).]
+    caption: [50-iteration Vanda backend comparison at fixed $K=8$ ($N=11"M"$).]
   ),
   figure(
     {
@@ -486,7 +486,7 @@ Figure 6 and Tables 10–12 report the authentic GPU measurements across cluster
         [*32*], [*1.6926*], [*0.5456*], [*0.2090*], [*8.10x*], [`5.296e-04`],
       )
     },
-    caption: [Apple M5 Metal GPU (`gpu_benchmark_apple_metal.csv`, $N=597,638$).]
+    caption: [30-iteration Apple M5 Metal GPU (`gpu_benchmark_apple_metal.csv`, $N=597,638$).]
   )
 )
 
