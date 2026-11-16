@@ -1,237 +1,122 @@
 ================================================================================
-DSA5208 PROJECT 3: COMPLETE EXPLANATION OF EVERYTHING DONE, DATASET FILE SIZES,
-AND EXACT RUNTIME DIFFERENCES ACROSS SERIAL, PURE MPI, HYBRID OPENMP, AND GPU
+DSA5208 PROJECT 3: COMPLETE TECHNICAL SUMMARY, VANDA 11M BENCHMARKS & GUIDE
 ================================================================================
-GitHub Repository: https://github.com/Nithillen/dsa5208-project3-scalable-kmeans
-Dataset Source   : https://archive.ics.uci.edu/dataset/280/higgs
+Author / Student ID : Nithillen Jayaseelan (A0351473E)
+Course              : DSA5208 — Scalable Distributed Computing for Data Science
+GitHub Repository   : https://github.com/Nithillen/dsa5208-project3-scalable-kmeans
+Dataset Source      : https://archive.ics.uci.edu/dataset/280/higgs
 
 --------------------------------------------------------------------------------
-1. DATASET EXTRACTION: HOW MANY FILES & WHAT WERE THEIR EXACT SIZES?
+1. FULL 11,000,000-ROW DATASET & TRANSPARENT ATOMIC BINARY CACHE
 --------------------------------------------------------------------------------
-When downloading from the UCI Machine Learning Repository (Dataset ID #280,
-"HIGGS"), the upstream archive contains:
-  * Raw Upstream Archive: 1 compressed file named `HIGGS.csv.gz`
-    - Compressed download size : 2.62 GB (2,816,407,858 bytes)
-    - Uncompressed full size   : 7.48 GB (11,000,000 rows x 29 columns)
-    - Column structure         : Column 0 is the binary label (1 = Higgs Boson
-      signal, 0 = background process). Columns 1 to 28 are the 28 continuous
-      high-energy physics features (21 low-level detector momenta/angles +
-      7 high-level invariant mass features: m_jj, m_jjj, m_lv, m_jlv, m_bb,
-      m_wbb, m_wwbb).
+Upstream UCI Archive: `HIGGS.csv.gz`
+  * Compressed download : 2.62 GB (2,816,407,858 bytes)
+  * Uncompressed CSV    : 7.48 GB (11,000,000 rows x 29 columns)
+  * Features (d = 28)   : 21 low-level detector momenta/angles + 7 high-level
+                          invariant masses (m_jj, m_jjj, m_lv, m_jlv, m_bb,
+                          m_wbb, m_wwbb). Column 0 is the binary signal label.
 
-When we extracted and cleaned the dataset using `scripts/prepare_higgs_data.py`,
-we streamed the archive over HTTP, removed malformed/NaN rows, and split the
-data into TWO (2) clean files inside the `data/` directory:
+On NUS Vanda (`scripts/prepare_higgs_data.py --all`):
+  * `data/higgs_clean.csv`  : 11,000,000 rows x 28 features (308,000,000 floats,
+                              2.464 GB IEEE-754 doubles in RAM).
+  * `data/higgs_labels.txt` : 11,000,000 binary ground-truth labels (0 or 1).
+  * `data/higgs_clean.csv.bin`: Atomic binary cache (`KMEANSB1` header + byte-size
+                              guard) created on first CSV parse (8.32 s load),
+                              delivering >30x faster multi-rank loading with
+                              bitwise-identical doubles (`diff -s` verified).
 
-  1. `data/higgs_clean.csv`
-     - Exact Size  : 130.81 MB (137,159,578 bytes)
-     - Exact Rows  : 597,638 collision events
-     - Features (d): 28 floating-point numbers per row
-     - Total Values: 16,733,864 floats (597,638 x 28)
-     - Purpose     : The unlabeled feature matrix fed into K-Means clustering.
-
-  2. `data/higgs_labels.txt`
-     - Exact Size  : 1.14 MB (1,195,276 bytes)
-     - Exact Rows  : 597,638 binary integer labels (0 or 1)
-     - Purpose     : Ground-truth labels used ONLY after clustering finishes
-                     to measure how well K-Means separates real Higgs boson
-                     signal events from background events.
-
-  -> TOTAL EXTRACTED FILES IN `data/`: 2 files
-  -> TOTAL COMBINED SIZE ON DISK     : 131.95 MB (138,354,854 bytes)
-
-(Note: Because GitHub blocks files larger than 100 MB, `data/higgs_clean.csv`
-is listed in `.gitignore` and can be regenerated anywhere—including on NUS
-Vanda—by running `python3 scripts/prepare_higgs_data.py`.)
-
+Note on Local Development Data (`data/` in local workspace):
+  * For rapid local correctness CI & Apple M5 Metal testing (`test_correctness.py`
+    and `results/gpu_benchmark_apple_metal.csv`), the local workspace contains
+    597,638 rows (`137,159,578` bytes `higgs_clean.csv` + `1,195,276` bytes
+    `higgs_labels.txt`). Running `python3 scripts/prepare_higgs_data.py --all`
+    streams all 11,000,000 rows cleanly anywhere.
 
 --------------------------------------------------------------------------------
-2. CHRONOLOGICAL EXPLANATION OF EVERYTHING WE BUILT (STEP BY STEP)
+2. IMPLEMENTATIONS & ARCHITECTURES
 --------------------------------------------------------------------------------
-
-STEP 1: 1-Core Serial Baseline (`src/kmeans_serial.cpp`)
-  - What we did:
-    Implemented Lloyd's K-Means algorithm in C++17 on a single CPU core.
-    In each iteration:
-      (a) Expectation step: For each of the N = 597,638 points, compute the
-          squared Euclidean distance to all K centroids across d = 28 features
-          and assign the point to its closest centroid.
-      (b) Maximization step: Recompute each of the K centroids as the mean of
-          all points assigned to it, and measure the maximum centroid shift.
-  - Why we did it:
-    Provides the 1-core reference runtime to calculate parallel Speedup S(P)
-    and Parallel Efficiency E(P), and saves the converged centroids to
-    `results/centroids_serial.txt` so we can mathematically verify that all
-    parallel implementations produce the exact same clusters.
-
-STEP 2: Pure MPI Distributed-Memory Parallelization (`src/kmeans_mpi.cpp`)
-  - What we did:
-    Parallelized K-Means across P separate MPI processes (ranks) using 1D
-    Row-Block Domain Decomposition:
-      (a) Rank 0 loads the dataset and initial centroids, broadcasts the
-          initial centroids via `MPI_Bcast`, and scatters 1/P of the rows
-          (N / P points) to each MPI rank using `MPI_Scatterv`.
-      (b) In each iteration, every rank computes distances ONLY for its local
-          N/P points and accumulates partial cluster sums (`local_sums`) and
-          point counts (`local_counts`).
-      (c) At the end of each iteration, all ranks synchronize via two global
-          `MPI_Allreduce(..., MPI_SUM)` calls so every rank receives the global
-          centroid sums and updates the centroids identically.
-      (d) We instrumented separate timers (`MPI_Wtime`) for Computation Time
-          vs. `MPI_Allreduce` Communication Time.
-
-STEP 3: Hybrid MPI + OpenMP Parallelization (`src/kmeans_omp.cpp`)
-  - What we did:
-    Combined distributed-memory MPI between processes (`P` ranks) with
-    shared-memory OpenMP threads (`T` threads) inside each process.
-    We also implemented and tested two major parallel design choices:
-      (a) Accumulation Design Choice:
-          - `atomic` mode: All OpenMP threads update a single shared centroid
-            sum array using `#pragma omp atomic update`.
-          - `private` mode: Each OpenMP thread accumulates into its own
-            64-byte cache-line padded private array (`all_thread_sums`) with
-            ZERO locks/atomics during the main loop, reducing once at the end
-            of the iteration.
-      (b) Loop Scheduling Choice:
-          - Compared `schedule(static)`, `schedule(dynamic, 1024)`, and
-            `schedule(guided)` using `#pragma omp for schedule(runtime)`.
-      (c) OpenMP GPU Offload (`-g` flag):
-          - Added `#pragma omp target teams distribute parallel for` so the
-            same code can offload directly to NVIDIA GPUs on Vanda.
-
-STEP 4: Hardware GPU Acceleration (`src/kmeans_metal_gpu.mm` & `src/kmeans_cuda.cu`)
-  - What we did:
-    Because the course rubric (Lecture 12 Slide 37) states: "If you choose
-    X=OpenMP, then you also have to test on at least one GPU", we wrote:
-      (a) `src/kmeans_cuda.cu`: Hybrid MPI + CUDA kernel for NUS Vanda's
-          NVIDIA GPUs using on-chip `__shared__` memory centroid caching and
-          block-level shared-memory reduction.
-      (b) `src/kmeans_metal_gpu.mm`: Hybrid MPI + Apple Metal GPU compute
-          shader for local Apple M5 GPU execution, using on-chip `threadgroup`
-          shared memory (`s_centroids`) and zero-copy Unified Shared Memory.
-
+  1. `src/kmeans_serial.cpp`:
+     1-core C++17 Lloyd's K-Means baseline (`results/centroids_serial.txt`) +
+     post-convergence UCI HIGGS signal/background cluster analysis across all
+     11,000,000 events (`kmeans_cpu_benchmarks.o1563432`).
+  2. `src/kmeans_mpi.cpp`:
+     Pure MPI distributed-memory 1D row-block decomposition (`MPI_Scatterv` +
+     distributed parallel I/O `-io parallel`), comparing 3-call separate
+     `MPI_Allreduce` vs. single-call packed `-allreduce packed`.
+  3. `src/kmeans_omp.cpp`:
+     Hybrid `MPI + OpenMP` (`MPI_THREAD_FUNNELED`, `#pragma omp simd`) comparing
+     64-byte cache-padded thread-private accumulators (`-a private`) vs. shared
+     `#pragma omp atomic` (`-a atomic`), OpenMP schedules (`static`, `dynamic`,
+     `guided`), standalone `-DSTANDALONE_OMP`, and NVIDIA GPU offload `-mp=gpu`.
+  4. `src/kmeans_cuda.cu`:
+     Hybrid `MPI + CUDA` kernel for Vanda NVIDIA A40 (`__shared__` centroid cache,
+     `atomicAddDouble` with `sm_60+` hardware FP64 support, automatic global
+     fallback for large K*d).
+  5. `src/kmeans_metal_gpu.mm`:
+     Hybrid `MPI + Apple Metal` GPU shader (`threadgroup float s_centroids[1024]`,
+     zero-copy `MTLResourceStorageModeShared`).
 
 --------------------------------------------------------------------------------
-3. EXACT TIME DIFFERENCES BETWEEN EVERY IMPLEMENTATION
+3. MEASURED NUS VANDA BENCHMARK RESULTS (ALL N = 11,000,000 HIGGS EVENTS)
 --------------------------------------------------------------------------------
+Verbatim PBS logs in repo root:
+  * CPU log: `kmeans_cpu_benchmarks.o1563432` (Node CN-111: 72-core Xeon 8452Y)
+  * GPU log: `kmeans_gpu_benchmark.o1563433`  (Node GN-A40-044: NVIDIA A40 48 GB)
 
-================================================================================
-A. 50-ITERATION BENCHMARK ON FULL UCI HIGGS DATASET (N = 597,638, d = 28, K = 8)
-================================================================================
-Baseline Reference: 1-Core Serial (`kmeans_serial`) = 1.3380 seconds (26.76 ms/iter)
+A. 1-CORE SERIAL BASELINE & COMPLEXITY SCALING (CN-111)
+  * 50-Iter Full Baseline (K=8, d=28): 49.0870 s (981.74 ms/iter, 11.20 M pts/s,
+    crossed tol=1e-5 at iter 47, Final SSE = 1.584590e+08)
+  * Scaling vs. N (`results/serial_scaling_N.csv`, 30 iters, K=8):
+    100k: 0.4079s (7.35 M/s) | 500k: 1.2805s (11.71 M/s) | 1M: 2.7431s (10.94 M/s)
+    2.5M: 6.4020s (11.72 M/s) | 5M: 12.8151s (11.70 M/s) | 11M: 28.0452s (11.77 M/s)
+  * Scaling vs. K (`results/serial_scaling_K.csv`, N=11M, 30 iters):
+    K=2: 10.5133s (31.39 M/s) | K=4: 15.8274s (20.85 M/s) | K=8: 28.1074s (11.74 M/s)
+    K=16: 60.0651s (5.49 M/s) | K=32: 112.5194s (2.93 M/s)
 
-Method / Configuration                   | Total Time | Avg Iter | Time Saved vs Serial | Speedup | Throughput   | Max Error vs Serial
------------------------------------------+------------+----------+----------------------+---------+--------------+--------------------
-1. Serial Baseline (1 Core)              |   1.3380 s | 26.76 ms |       0.0000 s (0%)  |   1.00x |  22.33 M/s   | 0.000e+00 (Ref)
-2. OpenMP Atomic Mode (P=1, T=4, atomic) |   1.8447 s | 36.89 ms |      -0.5067 s (-38%)|   0.73x |  16.20 M/s   | 4.982e-12 (PASSED)
-3. Pure MPI (P=1 Rank)                   |   1.3101 s | 26.20 ms |      +0.0279 s (2.1%)|   1.02x |  22.81 M/s   | 4.977e-12 (PASSED)
-4. Pure MPI (P=2 Ranks)                  |   0.6802 s | 13.60 ms |      +0.6578 s (49%) |   1.97x |  43.93 M/s   | 5.484e-12 (PASSED)
-5. Hybrid MPI+OMP (P=1 Rank, T=2 Threads)|   0.4890 s |  9.78 ms |      +0.8490 s (63%) |   2.74x |  61.11 M/s   | 5.484e-12 (PASSED)
-6. Pure MPI (P=8 Ranks)                  |   0.4403 s |  8.81 ms |      +0.8977 s (67%) |   3.04x |  67.87 M/s   | 6.763e-12 (PASSED)
-7. Pure MPI (P=4 Ranks)                  |   0.4031 s |  8.06 ms |      +0.9349 s (70%) |   3.32x |  74.14 M/s   | 5.810e-12 (PASSED)
-8. OpenMP Private Static (P=1, T=4)      |   0.3265 s |  6.53 ms |      +1.0115 s (76%) |   4.10x |  91.51 M/s   | 5.810e-12 (PASSED)
-9. OpenMP Private Dynamic (P=1, T=4)     |   0.3054 s |  6.11 ms |      +1.0326 s (77%) |   4.38x |  97.85 M/s   | 5.810e-12 (PASSED)
-10. Hybrid MPI+OMP (P=2 Ranks, T=2 Thr)  |   0.2972 s |  5.94 ms |      +1.0408 s (78%) |   4.50x | 100.54 M/s   | 5.810e-12 (PASSED)
-11. OpenMP Private Guided (P=1, T=4)     |   0.2947 s |  5.89 ms |      +1.0433 s (78%) |   4.54x | 101.40 M/s   | 5.813e-12 (PASSED)
-12. Hybrid MPI+OMP (P=2 Ranks, T=4 Thr)  |   0.2661 s |  5.32 ms |      +1.0719 s (80%) |   5.03x | 112.28 M/s   | 6.763e-12 (PASSED)
-13. Hybrid MPI+OMP (P=1 Rank, T=8 Thr)   |   0.2500 s |  5.00 ms |      +1.0880 s (81%) |   5.35x | 119.53 M/s   | 6.763e-12 (PASSED)
+B. PURE MPI STRONG SCALING (P = 1..64, N = 11,000,000, 50 Iters, `mpi_strong_scaling.csv`)
+  P= 1 | 31.4583 s | Comm: 0.0005 s ( 0.0%) |  1.00x (100.0%) |  17.48 M/s | Err 0.000e+00
+  P= 2 | 14.4035 s | Comm: 1.3279 s ( 9.2%) |  2.18x (109.2%) |  38.19 M/s | Err 0.000e+00
+  P= 4 |  7.8956 s | Comm: 1.2932 s (16.4%) |  3.98x ( 99.6%) |  69.66 M/s | Err 0.000e+00
+  P= 8 |  3.9428 s | Comm: 0.7755 s (19.7%) |  7.98x ( 99.7%) | 139.49 M/s | Err 0.000e+00
+  P=16 |  2.4039 s | Comm: 0.7380 s (30.7%) | 13.09x ( 81.8%) | 228.80 M/s | Err 0.000e+00
+  P=32 |  1.3659 s | Comm: 0.5703 s (41.8%) | 23.03x ( 72.0%) | 402.68 M/s | Err 0.000e+00
+  P=64 |  0.6211 s | Comm: 0.1323 s (21.3%) | 50.65x ( 79.1%) | 885.49 M/s | Err 0.000e+00
+  All 7 runs achieve identical Final SSE = 1.584590e+08 and Max Abs Err = 0.000e+00.
+  Packed Allreduce vs. Separate cut P=8 comm wait from 1.6457s to 0.6824s (2.41x).
 
-KEY TIME DIFFERENCE TAKEAWAYS (CPU, MPI, AND OPENMP):
-  1. Serial (1.3380 s) vs. Best Hybrid OpenMP (0.2500 s):
-     - Exact Time Difference: Saved 1.0880 seconds (81.3% reduction in runtime),
-       speeding up each iteration from 26.76 ms down to 5.00 ms (5.35x faster vs
-       `kmeans_serial`, and 3.64x faster vs 1-thread `kmeans_omp`).
-  2. Thread-Private Accumulators (0.2947 s) vs. Atomic Updates (1.8447 s):
-     - Exact Time Difference: 1.5500 seconds difference!
-     - Using `#pragma omp atomic` is 6.26x SLOWER than cache-padded thread-private
-       accumulators because 4 threads fighting over the same 224 centroid memory
-       locations 17.3 million times per iteration causes severe L1/L2 cache-line
-       bouncing.
-  3. Pure MPI (P=8, T=1) vs. Hybrid MPI+OpenMP (P=2, T=4 or P=1, T=8):
-     - In Pure MPI at P=8 (`run_mpi_scaling.py`), `MPI_Allreduce` communication
-       and barrier synchronization took 0.1442 s (32.8% of the 0.4403 s runtime).
-     - Switching to Hybrid `P=2, T=4` cut `MPI_Allreduce` time down to 0.0096 s
-       (saving 0.1346 s of communication overhead!), and `P=1, T=8` eliminated
-       inter-rank MPI communication completely (0.0000 s), finishing in 0.2500 s.
+C. PURE MPI WEAK SCALING (`mpi_weak_scaling.csv`, 200,000 pts/rank, 30 Iters)
+  P=1 (200k): 0.2983s (100.0%, 20.11 M/s) -> P=64 (12.8M): 0.5491s (54.3%, 699.36 M/s)
 
+D. HYBRID MPI + OPENMP DESIGN & 72-CORE NUMA GRID (N = 11,000,000, 50 Iters)
+  * Design choices (`omp_design_choices.csv`, P=1, T=4):
+    - private + guided : 11.5415 s (230.83 ms/iter, 47.65 M/s) -> 13.52x faster than atomic!
+    - private + dynamic: 11.5427 s (230.85 ms/iter, 47.65 M/s)
+    - private + static : 14.1680 s (283.36 ms/iter, 38.82 M/s)
+    - standalone static: 14.6160 s (292.32 ms/iter, 37.63 M/s)
+    - atomic  + static : 156.0935 s (3121.87 ms/iter, 3.52 M/s)
+  * Key 72-core grid points (`hybrid_mpi_omp_grid.csv`, baseline 1x1 = 29.3235 s):
+    - 1x72 (Pure OMP, cross-NUMA): 2.0441 s (14.35x, 269.07 M/s)
+    - 2x36 (NUMA-aligned Hybrid) : 1.3244 s (22.14x, 415.29 M/s, only 3.3% comm -> 35.2% faster than 1x72)
+    - 72x1 (Flat MPI, 72 cores)  : 0.6448 s (45.48x, 853.03 M/s -> 76.13x faster than 49.0870s serial)
 
-================================================================================
-B. GPU VS. CPU TIME DIFFERENCES ACROSS CLUSTER COUNTS K = {8, 16, 32} (30 ITERS)
-================================================================================
-Tested on UCI HIGGS (N = 597,638, d = 28, 30 Iterations) comparing:
-  - 1-Core CPU (`P=1, T=1`)
-  - 4-Core CPU OpenMP (`P=1, T=4`)
-  - Apple M5 GPU (`kmeans_metal_gpu`, GPU compute shader + threadgroup memory)
-
-Clusters | 1-Core CPU | 4-Core OMP | M5 GPU Total | GPU Kernel Only | Time Saved (GPU vs 1-Core) | GPU Speedup vs 1-Core | GPU Speedup vs 4-Core OMP
----------+------------+------------+--------------+-----------------+----------------------------+-----------------------+--------------------------
-K = 8    |   0.5621 s |   0.1871 s |     0.2022 s |        0.1489 s |       +0.3599 s (-64.0%)   |                 2.78x |                     0.93x
-K = 16   |   0.9243 s |   0.3100 s |     0.1459 s |        0.0945 s |       +0.7784 s (-84.2%)   |                 6.34x |                     2.12x
-K = 32   |   1.6754 s |   0.5563 s |     0.2070 s |        0.1557 s |       +1.4684 s (-87.6%)   |                 8.09x |                     2.69x
-
-KEY GPU TIME DIFFERENCE TAKEAWAYS:
-  1. At K = 8 (4.78M distance evaluations/iter):
-     - The GPU finishes in 0.2022 s vs. 0.5621 s on 1 CPU core (saving 0.3599 s,
-       a 2.78x speedup), and is nearly tied with 4-core OpenMP (0.1871 s) because
-       the per-iteration work is small relative to GPU command dispatch overhead.
-  2. At K = 16 (9.56M distance evaluations/iter):
-     - The GPU finishes in 0.1459 s (with only 0.0945 s spent in the GPU distance
-       kernel!), saving 0.7784 s compared to 1-core CPU (6.34x speedup) and
-       0.1641 s compared to 4-core OpenMP (2.12x speedup).
-  3. At K = 32 (19.12M distance evaluations/iter):
-     - 1-Core CPU takes 1.6754 s and 4-Core OpenMP takes 0.5563 s, whereas the
-       GPU finishes in just 0.2070 s (saving 1.4684 seconds, an 8.09x speedup
-       over 1-core CPU and 2.69x speedup over 4-core OpenMP!).
-
-
-================================================================================
-C. 1-NODE SERIAL SCALING WITH PROBLEM SIZE N (30 ITERS, K = 8, d = 28)
-================================================================================
-Points (N) | Total Floats | Total Time (s) | Avg Iter (ms) | Time Ratio vs 25k | Throughput
------------+--------------+----------------+---------------+-------------------+--------------
-    25,000 |      700,000 |       0.0338 s |       1.13 ms |             1.00x | 22.18 M pts/s
-    50,000 |    1,400,000 |       0.0651 s |       2.17 ms |             1.93x | 23.05 M pts/s
-   100,000 |    2,800,000 |       0.1307 s |       4.36 ms |             3.87x | 22.95 M pts/s
-   200,000 |    5,600,000 |       0.2633 s |       8.78 ms |             7.79x | 22.79 M pts/s
-   400,000 |   11,200,000 |       0.5311 s |      17.70 ms |            15.71x | 22.59 M pts/s
-   597,638 |   16,733,864 |       0.7943 s |      26.48 ms |            23.50x | 22.57 M pts/s
-
+E. HARDWARE GPU ACCELERATION: VANDA NVIDIA A40 (11M) & APPLE M5 METAL (597k)
+  * Vanda NVIDIA A40 (`gpu_benchmark.csv`, N=11M, 30 Iters):
+    - K= 8: 1C=17.3726s | 4C= 5.1064s | CUDA= 3.0461s (5.70x vs 1C, 108.33 M/s, RMSE=1.509e-12, SSE=1.584590e+08)
+    - K=16: 1C=32.7197s | 4C=10.1117s | CUDA= 5.7795s (5.66x vs 1C,  57.10 M/s, RMSE=1.521e-12, SSE=1.441739e+08)
+    - K=32: 1C=58.3357s | 4C=16.0496s | CUDA=12.4475s (4.69x vs 1C,  26.51 M/s, RMSE=1.562e-12, SSE=1.318415e+08)
+  * Vanda 50-Iter GPU Backends (`kmeans_gpu_benchmark.o1563433`, N=11M, K=8):
+    - Native CUDA (`__shared__`) : 5.0759 s (108.36 M pts/s, 9.67x vs serial 49.0870s, 3.10x vs -mp=gpu)
+    - OpenMP GPU Target -mp=gpu  : 15.7554 s (34.91 M pts/s, 3.12x vs serial 49.0870s)
+  * Apple M5 Metal GPU (`gpu_benchmark_apple_metal.csv`, N=597,638, 30 Iters):
+    - K=8: 0.1189s (4.76x) | K=16: 0.1444s (6.57x) | K=32: 0.2090s (8.10x vs 1C 1.6926s)
 
 --------------------------------------------------------------------------------
-4. HOW TO RUN ON NUS VANDA SUPERCOMPUTER (FROM THE NUS SHAREPOINT GUIDE & SLIDES)
+4. REPRODUCING VANDA PBS JOBS
 --------------------------------------------------------------------------------
-The SharePoint link you shared is the official NUS Research Computing Vanda User
-Guide (referenced in Lecture 8 Slides 42-47 and Lecture 12 Slide 40). Here are
-the exact commands to run this repository on Vanda:
-
-1. Connect to NUS WiFi or NUS VPN, then SSH into Vanda:
-     ssh <your_nusnet_id>@vanda.nus.edu.sg
-
-2. Clone your GitHub repository onto Vanda and prepare the UCI HIGGS dataset:
-     git clone https://github.com/Nithillen/dsa5208-project3-scalable-kmeans.git
-     cd dsa5208-project3-scalable-kmeans
-     python3 scripts/prepare_higgs_data.py
-
-3. Start a 10-minute interactive compute node session to compile (never compile
-   on the Vanda login VM!):
-     qsub -I -l select=1:ncpus=1 -l walltime=00:10:00
-     cd ~/dsa5208-project3-scalable-kmeans
-     module load nvhpc-hpcx-cuda12/26.1
-     make
-     exit
-
-4. Check your project ID / queue template if needed:
-     hpc cpu
-     hpc gpu
-   (If your account uses a specific project code instead of `#PBS -P dsa5208`,
-   update the `#PBS -P` line at the top of `scripts/vanda_mpi_256cores.pbs`
-   and `scripts/vanda_hybrid_gpu.pbs`, or remove the `#PBS -P` line to use your
-   default personal allocation.)
-
-5. Submit the 256-Core Pure MPI job and the 72-Core Hybrid + NVIDIA GPU job:
-     qsub scripts/vanda_mpi_256cores.pbs
-     qsub scripts/vanda_hybrid_gpu.pbs
-
-6. Monitor your jobs in the queue:
-     qstat -u $USER
+1. `ssh <user>@vanda.nus.edu.sg` and clone into `/scratch/$USER/dsa5208-project3-scalable-kmeans`.
+2. Stream full 11M HIGGS dataset: `python3 scripts/prepare_higgs_data.py --all`
+3. Compile on interactive compute node (`qsub -I -l select=1:ncpus=4 -l walltime=00:15:00`) using `module load nvhpc-hpcx-cuda12/26.1 && make all`.
+4. Submit CPU & GPU jobs:
+     `qsub scripts/vanda_cpu_benchmarks.pbs`
+     `qsub scripts/vanda_gpu_benchmarks.pbs`
 ================================================================================

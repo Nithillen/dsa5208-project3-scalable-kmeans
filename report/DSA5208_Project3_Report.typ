@@ -1,6 +1,6 @@
 #set page(
   paper: "a4",
-  margin: (top: 1.8cm, bottom: 1.8cm, left: 1.8cm, right: 1.8cm),
+  margin: (top: 1.75cm, bottom: 1.75cm, left: 1.75cm, right: 1.75cm),
   header: align(right)[
     #text(size: 8.5pt, fill: rgb("#555555"))[
       *DSA5208: Scalable Distributed Computing for Data Science — Project 3 Report*
@@ -10,25 +10,25 @@
     #set text(size: 8.5pt, fill: rgb("#555555"))
     #grid(
       columns: (1fr, 1fr),
-      align(left)[Scalable Hybrid Parallel K-Means Clustering (`MPI + OpenMP + GPU`)],
+      align(left)[Scalable Hybrid Parallel K-Means (`MPI + OpenMP + CUDA + Metal`)],
       align(right)[Page #counter(page).display("1 of 1", both: true)]
     )
   ]
 )
 
-#set text(font: ("New Computer Modern", "Times New Roman", "Georgia"), size: 9.8pt)
-#set par(justify: true, leading: 0.55em)
+#set text(font: ("New Computer Modern", "Times New Roman", "Georgia"), size: 9.6pt)
+#set par(justify: true, leading: 0.54em)
 #set heading(numbering: "1.1.")
 
-#show heading.where(level: 1): it => block(above: 1.2em, below: 0.6em)[
-  #set text(size: 12pt, weight: "bold", fill: rgb("#1b4f72"))
+#show heading.where(level: 1): it => block(above: 1.15em, below: 0.55em)[
+  #set text(size: 11.8pt, weight: "bold", fill: rgb("#1b4f72"))
   #it
   #v(-0.4em)
   #line(length: 100%, stroke: 0.7pt + rgb("#1b4f72"))
 ]
 
-#show heading.where(level: 2): it => block(above: 0.9em, below: 0.45em)[
-  #set text(size: 10.5pt, weight: "bold", fill: rgb("#1f618d"))
+#show heading.where(level: 2): it => block(above: 0.85em, below: 0.4em)[
+  #set text(size: 10.3pt, weight: "bold", fill: rgb("#1f618d"))
   #it
 ]
 
@@ -39,18 +39,22 @@
     fill: rgb("#f4f8fb"),
     stroke: 1pt + rgb("#1b4f72"),
     radius: 4pt,
-    inset: 12pt,
+    inset: 11pt,
   )[
-    #text(size: 14.2pt, weight: "bold", fill: rgb("#1b4f72"))[
-      Scalable Hybrid Parallelization of Lloyd's K-Means Clustering (`MPI + OpenMP + GPU`) on the UCI HIGGS Boson High-Energy Physics Dataset
+    #text(size: 13.8pt, weight: "bold", fill: rgb("#1b4f72"))[
+      Scalable Hybrid Parallelization of Lloyd's K-Means Clustering (`MPI + OpenMP + CUDA + Metal`) on the Full 11-Million-Row UCI HIGGS Boson Dataset
     ]
     #v(0.4em)
-    #text(size: 10.2pt, weight: "semibold")[
+    #text(size: 10.0pt, weight: "semibold")[
       DSA5208: Scalable Distributed Computing for Data Science (Project 3)
     ]
     #v(0.25em)
     #text(size: 9.2pt, fill: rgb("#333333"))[
-      *Author:* Nithillen Jayaseelan (Student ID: A0351473E) | *Date:* November 2026 | *Repository:* #link("https://github.com/Nithillen/dsa5208-project3-scalable-kmeans")[`github.com/Nithillen/dsa5208-project3-scalable-kmeans`]
+      *Author:* Nithillen Jayaseelan | *Student ID:* `A0351473E` | *Date:* November 2026
+    ]
+    #v(0.15em)
+    #text(size: 8.8pt, fill: rgb("#333333"))[
+      *Public GitHub Repository:* #link("https://github.com/Nithillen/dsa5208-project3-scalable-kmeans")[`https://github.com/Nithillen/dsa5208-project3-scalable-kmeans`]
     ]
   ]
 ]
@@ -62,279 +66,303 @@
   stroke: (left: 3pt + rgb("#117864")),
   inset: (left: 10pt, top: 6pt, bottom: 6pt, right: 8pt)
 )[
-  *Executive Summary.* This report presents a complete design, implementation, validation, and scaling analysis of Lloyd's K-Means clustering across four parallel computing paradigms: *(1) 1-Core Serial C++17*, *(2) Pure Distributed-Memory MPI*, *(3) Hybrid `MPI + OpenMP` (CPU shared-memory multithreading and GPU target offload)*, and *(4) Hardware GPU Acceleration (`MPI + Apple Metal GPU Shader` and `MPI + CUDA`)*. Evaluated on the real-world *UCI HIGGS Boson High-Energy Physics Dataset (ID \#280)* ($N = 597,638$ collision events $times$ $d = 28$ kinematic features $= 16,733,864$ floating-point values, $131.95 "MB"$) and synthetic multi-million point Gaussian benchmarks, our implementations achieve exact mathematical agreement with the serial baseline ($max_(k,j) |C_(k,j)^("parallel") - C_(k,j)^("serial")| <= 6.763 times 10^(-12)$). Eliminating shared-memory atomic contention via 64-byte cache-padded thread-private accumulators speeds up OpenMP execution by *$6.26 times$* ($0.2947 "s"$ vs. $1.8447 "s"$). Hybrid `MPI + OpenMP` reduces `MPI_Allreduce` communication overhead by *$7.4 times$* compared to Pure MPI at 8 cores and cuts 50-iteration HIGGS runtime from *$1.3380 "s"$* (Serial) to *$0.2500 "s"$* (*$5.35 times$ overall speedup*, $119.53 "M points/sec"$). Finally, offloading distance evaluations to hardware GPU shader cores with on-chip shared-memory centroid caching yields up to an *$8.09 times$ speedup* over 1-core CPU and *$2.69 times$ speedup* over 4-core OpenMP at $K = 32$.
+  *Executive Summary.* This report presents the design, parallel implementation, mathematical validation, and empirical performance analysis of Lloyd's K-Means clustering across four parallel computing backends: *(1) 1-Core Serial C++17*, *(2) Pure Distributed-Memory MPI*, *(3) Hybrid `MPI + OpenMP` (CPU shared-memory multithreading and GPU target offload)*, and *(4) Native GPU Acceleration (`MPI + CUDA` on NVIDIA A40 and `MPI + Apple Metal` on Apple M5)*. All primary cluster benchmarks execute on the *entire real-world UCI HIGGS Boson Dataset (ID \#280)* ($N = 11,000,000$ collision events $times$ $d = 28$ features $= 308,000,000$ IEEE-754 doubles) on the *NUS Vanda Supercomputer* (`CN-111`: 72-core dual-socket Intel Xeon Platinum 8452Y; `GN-A40-044`: NVIDIA A40 48 GB GPU). On Vanda, Pure MPI achieves a *$50.65 times$ strong-scaling speedup* ($79.1%$ parallel efficiency, $885.49 "M points/sec"$) at $P = 64$ physical cores, cutting 50-iteration runtime from $31.4583 "s"$ ($P=1$) to $0.6211 "s"$ with exact `0.000e+00` centroid parity and identical WCSS/SSE objective ($1.584590 times 10^8$). Eliminating shared-memory atomic contention via 64-byte cache-padded thread-private OpenMP accumulators speeds up 4-thread execution by *$13.52 times$* ($11.5415 "s"$ vs. $156.0935 "s"$), while aligning MPI ranks to NUMA sockets (`P=2, T=36`: $1.3244 "s"$) cuts cross-socket OpenMP runtime by $35.2%$ relative to `P=1, T=72` ($2.0441 "s"$), and flat `P=72, T=1` reaches $0.6448 "s"$ ($45.48 times$ speedup, $853.03 "M pts/s"$). Finally, offloading to an NVIDIA A40 GPU with `__shared__` memory centroid caching completes 50 iterations on all $11,000,000$ events in *$5.0759 "s"$* ($108.36 "M pts/s"$, *$9.67 times$* faster than 1-core serial C++ and *$3.10 times$* faster than OpenMP `-mp=gpu` target offload at $15.7554 "s"$), while complementary Apple Metal GPU shaders reach *$8.10 times$ speedup* on $K = 32$ clusters.
 ]
 
-= Introduction to the Algorithm & Terminology Definitions
+= Introduction to the Algorithm & Parallel Computing Terminology
 
 == Mathematical Formulation of Lloyd's K-Means Clustering
-Given a dataset $X = {bold(x)_1, bold(x)_2, dots, bold(x)_N} subset RR^d$ of $N$ observations each having $d$ continuous features, and a target number of clusters $K$, K-Means clustering partitions $X$ into $K$ disjoint clusters $C = {C_1, C_2, dots, C_K}$ with centroids $bold(mu)_1, dots, bold(mu)_K in RR^d$ to minimize the Within-Cluster Sum of Squares (WCSS) objective:
+Given a dataset $X = {bold(x)_1, bold(x)_2, dots, bold(x)_N} subset RR^d$ of $N$ observations each with $d$ continuous features, and a target number of clusters $K$, K-Means clustering partitions $X$ into $K$ disjoint clusters $C = {C_1, C_2, dots, C_K}$ with centroids $bold(mu)_1, dots, bold(mu)_K in RR^d$ to minimize the Within-Cluster Sum of Squares (WCSS / SSE) objective:
 $ J(C, bold(mu)) = sum_(k=1)^K sum_(bold(x)_i in C_k) norm(bold(x)_i - bold(mu)_k)_2^2 = sum_(i=1)^N min_(k in {1,dots,K}) sum_(j=1)^d (x_(i,j) - mu_(k,j))^2 $
 
-Because globally minimizing $J(C, bold(mu))$ is NP-hard, *Lloyd's Algorithm* (1982) alternates between two coupled phases at each iteration $t = 0, 1, dots, T_("max")-1$:
-1. *Expectation (Point Assignment) Step:* Each point $bold(x)_i$ is assigned to its nearest centroid in squared Euclidean distance, requiring $N times K times d$ difference-and-multiply-accumulate operations per iteration:
+Because globally minimizing $J(C, bold(mu))$ is NP-hard, *Lloyd's Algorithm* (1982) alternates between two coupled phases across iterations $t = 0, 1, dots, T_("max")-1$:
+1. *Expectation (Point Assignment) Step:* Each point $bold(x)_i$ is assigned to its nearest centroid in squared Euclidean distance, executing $N times K times d$ multiply-subtract-accumulate operations per iteration:
    $ z_i^((t)) = arg min_(k in {1, dots, K}) sum_(j=1)^d (x_(i,j) - mu_(k,j)^((t)))^2, quad forall i in {1, dots, N} $
-2. *Maximization (Centroid Update) Step:* Each centroid $bold(mu)_k^((t+1))$ is recomputed from the sufficient statistics—the cluster vector sum $bold(S)_k^((t)) in RR^d$ and integer cardinality $M_k^((t)) in ZZ_(>= 0)$:
+2. *Maximization (Centroid Update) Step:* New centroids $bold(mu)_k^((t+1))$ are computed from the global cluster feature sums $bold(S)_k^((t)) in RR^d$ and integer cluster cardinalities $M_k^((t)) in ZZ_(>= 0)$:
    $ bold(S)_k^((t)) = sum_(i : z_i^((t)) = k) bold(x)_i, quad M_k^((t)) = sum_(i : z_i^((t)) = k) 1, quad bold(mu)_k^((t+1)) = bold(S)_k^((t)) / M_k^((t)) $
-The algorithm terminates when the maximum Euclidean centroid displacement across all $K$ clusters falls below a convergence threshold $epsilon > 0$:
-$ Delta_("max")^((t)) = max_(k in {1, dots, K}) norm(bold(mu)_k^((t+1)) - bold(mu)_k^((t)))_2 < epsilon $
+Termination occurs when the maximum Euclidean centroid shift satisfies $max_k norm(bold(mu)_k^((t+1)) - bold(mu)_k^((t)))_2 < epsilon$, or when a fixed iteration budget $T_("max")$ completes for controlled per-iteration timing benchmarks.
 
 == Why Lloyd's K-Means Is Not Embarrassingly Parallel
-Unlike embarrassingly parallel workloads (e.g., independent Monte Carlo simulations or pixel-wise image filtering) where workers never communicate until final output collection, parallelizing Lloyd's K-Means presents three fundamental high-performance computing challenges:
-1. *Strict Inter-Iteration Data Dependency & Global Barrier Synchronization:* Centroids $bold(mu)_k^((t+1))$ required to evaluate distances in iteration $t+1$ depend on the global sum of points assigned in iteration $t$ across *all* distributed partitions. Every MPI rank must participate in an all-to-all collective reduction (`MPI_Allreduce`) of $K times d$ doubles and $K$ 64-bit integers at the end of *every single iteration*.
-2. *Shared-Memory & GPU Accumulator Write Contention:* While distance evaluations across points $i in {1, dots, N}$ are read-only with respect to $X$ and $bold(mu)^((t))$, accumulating $bold(x)_i$ into $bold(S)_(z_i)^((t))$ and incrementing $M_(z_i)^((t))$ maps $N >> K$ concurrent threads onto only $K$ memory buckets. Naively using shared memory with atomic instructions creates severe *cache-line ping-pong* and serialization.
-3. *Shrinking Computation-to-Communication Ratio at Scale:* Per iteration, local computation scales as $cal(O)(N K d / P)$ while tree-based collective communication scales as $cal(O)(K d log_2 P)$. Under strong scaling up to $P = 256$ cores, local computation shrinks by $256 times$ while communication grows by $log_2(256) = 8 times$, exposing network latency and load-imbalance barriers.
+Unlike embarrassingly parallel workloads (e.g., independent Monte Carlo trials) where workers execute completely independently until final aggregation, scalable K-Means introduces three coupled HPC challenges:
+1. *Mandatory Per-Iteration Global Barrier Synchronization:* Evaluating assignments at iteration $t+1$ requires exact global centroids $bold(mu)^((t+1))$ aggregated across *all* distributed points. Every MPI rank must participate in blocking collective all-reductions (`MPI_Allreduce`) over $K times d$ doubles, $K$ counts, and scalar SSE at the end of *every single iteration*.
+2. *Many-to-Few Shared-Memory & GPU Write Contention:* Although reads of $X$ and $bold(mu)^((t))$ are embarrassingly read-only, updating cluster sums maps $N = 11,000,000$ concurrent worker evaluations onto only $K = 8$ shared accumulator buckets. Naive atomic accumulation causes severe hardware *cache-line ping-pong* across CPU sockets and warp serialization on GPUs.
+3. *NUMA Memory Bandwidth & Compute-to-Communication Ratio:* Because 28-dimensional squared Euclidean distance performs modest arithmetic per loaded byte, multi-socket cache locality (NUMA domain binding) and collective communication packing strongly govern real speedup at scale.
 
-== Definitions of Parallel Computing & Validation Terminology
-To ensure complete clarity (per Lecture 12 Slide 38 guidelines), Table 1 defines all technical metrics and terminology used throughout this report.
+== Definitions of Parallel Metrics & Validation Terminology
+Table 1 defines every performance and correctness metric used in this study (following Lecture 12 guidelines).
 
 #figure(
   table(
     columns: (1.7fr, 4.3fr),
-    inset: 5.5pt,
+    inset: 4.8pt,
     align: (left, left),
     fill: (col, row) => if row == 0 { rgb("#1b4f72") } else if calc.odd(row) { rgb("#f8fbfd") } else { white },
     [#text(fill: white, weight: "bold")[Term / Symbol]], [#text(fill: white, weight: "bold")[Formal Definition & Mathematical Formula]],
-    [*Strong Scaling*], [Measuring execution time $T(P)$ as the number of processors $P$ increases while the *total problem size $N$ remains fixed* (so workload per processor shrinks as $N/P$).],
-    [*Weak Scaling*], [Measuring execution time $T(P, P dot N_0)$ as the number of processors $P$ increases while the *workload per processor $N_0 = N/P$ remains fixed* (so total problem size grows linearly as $N = P dot N_0$).],
-    [*Parallel Speedup $S(P)$*], [The ratio of 1-worker execution time $T(1)$ to $P$-worker execution time $T(P)$ for a fixed problem size: $S(P) = T(1) / T(P)$. Ideal linear speedup satisfies $S(P) = P$.],
-    [*Strong Efficiency $E_("strong")(P)$*], [The fraction of ideal linear speedup achieved per processor: $E_("strong")(P) = (S(P) / P) times 100% = (T(1) / (P dot T(P))) times 100%$.],
-    [*Weak Efficiency $E_("weak")(P)$*], [The ratio of 1-worker runtime on problem size $N_0$ to $P$-worker runtime on scaled problem size $P dot N_0$: $E_("weak")(P) = (T(1, N_0) / T(P, P dot N_0)) times 100%$.],
-    [*Amdahl's Law*], [Upper bound on strong-scaling speedup when a fraction $f_("seq") in [0,1]$ of runtime is inherently sequential or non-parallelizable communication: $S(P) <= 1 / (f_("seq") + (1 - f_("seq")) / P)$.],
-    [*Gustafson's Law*], [Scaled speedup under weak scaling when the parallel work grows linearly with $P$: $S_("scaled")(P) = f_("seq") + P(1 - f_("seq"))$.],
-    [*`MPI_Allreduce` Collective*], [An MPI collective operation that reduces arrays across all $P$ ranks using an associative operator (`MPI_SUM`) and distributes the result back to all ranks in $cal(O)(log_2 P)$ steps.],
-    [*Cache-Line Ping-Pong / False Sharing*], [Hardware cache coherence thrashing that occurs when multiple CPU cores concurrently modify variables residing on the same 64-byte L1/L2 cache line, forcing repeated invalidations across the interconnect.],
-    [*Threadgroup / `__shared__` Memory*], [Fast, user-managed on-chip SRAM shared by all threads within a single GPU thread block (`__shared__` in CUDA, `threadgroup` in Apple Metal), offering $approx 10 times$ lower latency than global DRAM.],
-    [*Max Abs Error ($L_infinity$) & $"RMSE"$*], [Validation metrics comparing parallel centroids $C^("par")$ against serial reference centroids $C^("ser")$: $E_("max") = max_(k,j) |C_(k,j)^("par") - C_(k,j)^("ser")|$ and $"RMSE" = sqrt(1/(K d) sum_(k,j)(C_(k,j)^("par") - C_(k,j)^("ser"))^2)$.]
+    [*Strong Scaling*], [Measuring execution time $T(P)$ as processor count $P$ increases while *total dataset size $N$ stays fixed* ($N = 11,000,000$).],
+    [*Weak Scaling*], [Measuring execution time $T(P, P dot N_0)$ as processor count $P$ increases while *work per processor $N_0 = N/P$ stays fixed* ($200,000$ points/rank).],
+    [*Parallel Speedup $S(P)$*], [Ratio of 1-worker runtime $T(1)$ to $P$-worker runtime $T(P)$ on identical problem size: $S(P) = T(1) / T(P)$.],
+    [*Strong Efficiency $E_("strong")(P)$*], [Fraction of linear speedup achieved per worker: $E_("strong")(P) = (S(P) / P) times 100% = (T(1) / (P dot T(P))) times 100%$.],
+    [*Weak Efficiency $E_("weak")(P)$*], [Ratio of 1-worker time on size $N_0$ to $P$-worker time on size $P dot N_0$: $E_("weak")(P) = (T(1, N_0) / T(P, P dot N_0)) times 100%$.],
+    [*Amdahl's & Gustafson's Laws*], [Strong-scaling bound $S(P) <= 1/(f_("seq") + (1-f_("seq"))/P)$ from sequential/comm overhead $f_("seq")$; scaled speedup $S_("scaled")(P) = f_("seq") + P(1-f_("seq"))$.],
+    [*`MPI_Allreduce` (Separate vs Packed)*], [Tree-based $cal(O)(log_2 P)$ reduction summing local statistics across ranks. Packing sums, counts, and SSE into one array reduces multiple collective latencies to one.],
+    [*Cache-Line Ping-Pong / False Sharing*], [Hardware MESI coherence invalidation caused when concurrent CPU threads write atomic updates or adjacent elements on the same 64-byte L1/L2 cache line.],
+    [*On-Chip Shared Memory Cache*], [User-managed GPU SRAM (`__shared__` in CUDA, `threadgroup` in Apple Metal) shared by threads in a block to broadcast centroids without global DRAM stalls.],
+    [*Max Abs Error ($L_infinity$) & $"RMSE"$*], [Centroid parity vs. serial reference $C^("ser")$: $E_("max") = max_(k,j) |C_(k,j)^("par") - C_(k,j)^("ser")|$ and $"RMSE" = sqrt(1/(K d) sum_(k,j)(C_(k,j)^("par") - C_(k,j)^("ser"))^2)$.]
   ),
-  caption: [Definitions of all parallel performance metrics, hardware concepts, and validation terminology used in this study.]
+  caption: [Definitions of all parallel performance metrics, hardware concepts, and validation terminology.]
 )
 
-= Dataset Preparation & 1-Node Serial Runtime Scaling Analysis
+= Dataset, Supercomputer Hardware & Serial Complexity Scaling
 
-== UCI HIGGS Boson Dataset (ID \#280) Extraction & File Structure
-We evaluate our implementations on the real-world *UCI HIGGS Boson High-Energy Physics Dataset* (`https://archive.ics.uci.edu/dataset/280/higgs`, Baldi et al., *Nature Communications*, 2014), which simulates proton–proton collision events at the CERN Large Hadron Collider:
-- *Raw Upstream Archive:* Downloading from the UCI repository yields *1 compressed file* (`HIGGS.csv.gz`, *$2.62 "GB"$* / $2,816,407,858 "bytes"$ compressed; *$7.48 "GB"$* uncompressed with $11,000,000 "rows" times 29 "columns"$). Column 0 holds the binary class label ($1 =$ Higgs boson signal $H^0 -> W^+ W^- -> b overline(b) ell nu$, $0 =$ background $t overline(t)$ process), Columns 1–21 hold 21 low-level detector momenta/angles (lepton $p_T, eta, phi$, missing transverse energy $"MET"$, and 4-jet kinematics), and Columns 22–28 hold 7 high-level invariant mass features ($m_(j j), m_(j j j), m_(ell nu), m_(j ell nu), m_(b b), m_(w b b), m_(w w b b)$).
-- *Extracted & Cleaned Files (`scripts/prepare_higgs_data.py`):* Our streaming pipeline decompresses `HIGGS.csv.gz` in $1 "MB"$ HTTP chunks, removes malformed/NaN rows, and produces *2 clean files* in `data/` with a combined size of *$131.95 "MB"$* ($138,354,854 "bytes"$):
-  1. `data/higgs_clean.csv`: *$130.81 "MB"$* ($137,159,578 "bytes"$) containing *$N = 597,638$ rows $times$ $d = 28$ features* ($= 16,733,864$ floating-point values).
-  2. `data/higgs_labels.txt`: *$1.14 "MB"$* ($1,195,276 "bytes"$) containing *$597,638$ ground-truth binary labels* (`0` or `1`), used strictly post-clustering to evaluate the physical meaning of the discovered clusters.
+== Full 11,000,000-Row UCI HIGGS Boson Dataset Extraction & Caching
+All primary experiments use the complete *UCI HIGGS Boson High-Energy Physics Dataset (ID \#280)* (`Baldi et al., Nature Communications, 2014`), simulating all $11,000,000$ proton–proton collisions ($52.99%$ weighted Higgs signal mean across clusters vs. $47.01%$ background, `0` skipped rows):
+- *Input Cleaning (`scripts/prepare_higgs_data.py --all`):* Streams `HIGGS.csv.gz` ($2.62 "GB"$ compressed, $7.48 "GB"$ uncompressed, $11,000,000 times 29$ columns) and separates binary class labels (`data/higgs_labels.txt`, $11,000,000$ lines) from the 28 continuous physics features (`data/higgs_clean.csv`, $N = 11,000,000$ rows $times$ $d = 28$ features $= 308,000,000$ IEEE-754 doubles, occupying $2.464 "GB"$ in RAM).
+- *Transparent Binary Cache (`src/kmeans_common.hpp`):* On the first full-dataset read ($8.32 "s"$ on Vanda), `load_csv_data` atomically writes a validated IEEE-754 binary image (`data/higgs_clean.csv.bin` with magic header + source byte-size guard), cutting subsequent multi-rank I/O load times across all ~45 benchmark runs by $>30 times$ while guaranteeing bitwise-identical input floats (`diff -s` verified).
 
-== Serial Implementation & Complexity Analysis (`src/kmeans_serial.cpp`)
-Our 1-core serial baseline (`src/kmeans_serial.cpp`) loads `data/higgs_clean.csv` in $0.29 "s"$ using an $8 "MB"$ buffered `std::strtod` scanner and stores $X$ in a contiguous row-major array `data[i * d + j]` for optimal spatial locality and hardware prefetching. On the full 50-iteration reference run ($N = 597,638, d = 28, K = 8$), `kmeans_serial` completes in *$1.3380 "seconds"$* ($26.76 "ms/iter"$, throughput *$22.33 "M points/sec"$*).
+== Experimental Supercomputer & Development Hardware Platforms
+Table 2 summarizes all hardware platforms measured in this study.
 
-To verify how serial runtime scales with problem size, `scripts/run_serial_scaling.py` benchmarks 30 iterations across varying row counts $N in {25"k", 50"k", 100"k", 200"k", 400"k", 597,638}$ (`results/serial_scaling_N.csv`) and cluster counts $K in {2, 4, 8, 16, 32}$ (`results/serial_scaling_K.csv`). Figure 1 plots both scaling curves on *logarithmic (log-log) axes*, and Tables 2 and 3 report the exact numerical measurements.
+#figure(
+  table(
+    columns: (1.5fr, 1.3fr, 2.2fr, 1.8fr),
+    inset: 4.5pt,
+    align: left,
+    fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
+    [#text(fill: white, weight: "bold")[Platform]],
+    [#text(fill: white, weight: "bold")[Node / Host]],
+    [#text(fill: white, weight: "bold")[Processor / Accelerator Architecture]],
+    [#text(fill: white, weight: "bold")[Compiler / Stack & Workload]],
+    [*Vanda HPC CPU*], [`CN-111` (NUS Vanda)], [Dual-socket Intel Xeon Platinum 8452Y (2 NUMA nodes, 36 cores/socket $= 72$ physical cores, $240 "GB"$ RAM)], [`g++`/`mpicxx` (`nvhpc-hpcx-cuda12/26.1`); full $11,000,000$ rows],
+    [*Vanda HPC GPU*], [`GN-A40-044` (Vanda)], [1$times$ NVIDIA A40 (`sm_86`, $46,068 "MiB"$ VRAM, Driver `575.57.08`) + 36 host CPU cores], [`nvcc` CUDA `12.9` & `nvc++ -mp=gpu`; full $11,000,000$ rows],
+    [*Local Laptop GPU*], [Apple MacBook Air], [Apple M5 SoC (10 CPU cores, Unified Memory Metal GPU, $16 "GiB"$ RAM)], [`mpicxx` + `libomp` + Metal shaders; CI & $N=597,638$ Metal test]
+  ),
+  caption: [Compute platforms evaluated across Serial C++, Pure MPI, Hybrid `MPI + OpenMP`, CUDA, and Apple Metal.]
+)
+
+== Serial Baseline & Complexity Scaling on Full 11M Dataset (`src/kmeans_serial.cpp`)
+Running `kmeans_serial` for 50 iterations ($K = 8, d = 28$) on all $11,000,000$ HIGGS events on Vanda node `CN-111` completes in *$49.0870 "seconds"$* ($981.74 "ms/iter"$, *$11.20 "M points/sec"$*, Final SSE $= 1.584590 times 10^8$, crossing convergence tolerance $epsilon = 10^(-5)$ at iteration 47 while completing all 50 iterations cleanly for exact fixed-iteration validation). Figure 1 and Tables 3–4 report the empirical serial scaling across $N in [100"k", 11"M"]$ (`results/serial_scaling_N.csv`) and $K in \{2, 4, 8, 16, 32\}$ on all $N = 11,000,000$ events (`results/serial_scaling_K.csv`).
 
 #figure(
   image("figures/fig1_serial_scaling.png", width: 100%),
-  caption: [Log-log runtime scaling of the 1-core serial algorithm (`src/kmeans_serial.cpp`) on the UCI HIGGS dataset ($d=28$, 30 iterations) vs. (a) problem size $N$ ($K=8$) and (b) cluster count $K$ ($N=597,638$). Every point annotation matches Tables 2 and 3 exactly.]
+  caption: [Log-log runtime scaling of 1-core serial `kmeans_serial` on Vanda (`CN-111`, Intel Xeon Platinum 8452Y, $d=28, 30 "iterations"$): (a) Problem size $N$ ($100"k" dots.h 11"M"$, $K=8$); (b) Cluster count $K in \{2 dots.h 32\}$ on all $11,000,000$ rows.]
 )
 
 #grid(
-  columns: (1fr, 1fr),
-  gutter: 10pt,
+  columns: (1.14fr, 0.86fr),
+  gutter: 8pt,
   figure(
-    table(
-      columns: (1.1fr, 1.3fr, 1.1fr, 1.1fr, 1.2fr),
-      inset: 4.5pt,
-      align: right,
-      fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
-      [#text(fill: white, weight: "bold")[Points $N$]],
-      [#text(fill: white, weight: "bold")[Floats $N d$]],
-      [#text(fill: white, weight: "bold")[Time (s)]],
-      [#text(fill: white, weight: "bold")[Iter (ms)]],
-      [#text(fill: white, weight: "bold")[M pts/s]],
-      [25,000], [700,000], [0.0338], [1.13], [22.18],
-      [50,000], [1,400,000], [0.0651], [2.17], [23.05],
-      [100,000], [2,800,000], [0.1307], [4.36], [22.95],
-      [200,000], [5,600,000], [0.2633], [8.78], [22.79],
-      [400,000], [11,200,000], [0.5311], [17.70], [22.59],
-      [597,638], [16,733,864], [0.7943], [26.48], [22.57],
-    ),
-    caption: [Serial scaling vs. $N$ ($K=8, d=28, 30 "iters"$).]
+    {
+      set text(size: 8.2pt)
+      table(
+        columns: (1.25fr, 1.35fr, 1.0fr, 0.95fr, 0.95fr),
+        inset: 3.5pt,
+        align: right,
+        fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
+        [#text(fill: white, weight: "bold")[Points $N$]],
+        [#text(fill: white, weight: "bold")[Floats $N d$]],
+        [#text(fill: white, weight: "bold")[Time (s)]],
+        [#text(fill: white, weight: "bold")[Iter (ms)]],
+        [#text(fill: white, weight: "bold")[M pts/s]],
+        [100,000], [2,800,000], [0.4079], [13.60], [7.35],
+        [500,000], [14,000,000], [1.2805], [42.68], [11.71],
+        [1,000,000], [28,000,000], [2.7431], [91.44], [10.94],
+        [2,500,000], [70,000,000], [6.4020], [213.40], [11.72],
+        [5,000,000], [140,000,000], [12.8151], [427.17], [11.70],
+        [*11,000,000*], [*308,000,000*], [*28.0452*], [*934.84*], [*11.77*],
+      )
+    },
+    caption: [Vanda serial scaling vs. $N$ (`serial_scaling_N.csv`, $K=8, 30 "iters"$).]
   ),
   figure(
-    table(
-      columns: (0.9fr, 1.4fr, 1.1fr, 1.1fr, 1.2fr),
-      inset: 4.5pt,
-      align: right,
-      fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
-      [#text(fill: white, weight: "bold")[$K$]],
-      [#text(fill: white, weight: "bold")[Evals $N K$]],
-      [#text(fill: white, weight: "bold")[Time (s)]],
-      [#text(fill: white, weight: "bold")[Iter (ms)]],
-      [#text(fill: white, weight: "bold")[M pts/s]],
-      [2], [1,195,276], [0.2663], [8.88], [67.34],
-      [4], [2,390,552], [0.4917], [16.39], [36.46],
-      [8], [4,781,104], [0.8023], [26.74], [22.35],
-      [16], [9,562,208], [1.4189], [47.30], [12.64],
-      [32], [19,124,416], [2.6691], [88.97], [6.72],
-    ),
-    caption: [Serial scaling vs. $K$ ($N=597,638, d=28, 30 "iters"$).]
+    {
+      set text(size: 8.2pt)
+      table(
+        columns: (0.65fr, 1.45fr, 1.05fr, 1.0fr, 0.95fr),
+        inset: 3.5pt,
+        align: right,
+        fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
+        [#text(fill: white, weight: "bold")[$K$]],
+        [#text(fill: white, weight: "bold")[Evals $N K$]],
+        [#text(fill: white, weight: "bold")[Time (s)]],
+        [#text(fill: white, weight: "bold")[Iter (ms)]],
+        [#text(fill: white, weight: "bold")[M pts/s]],
+        [2], [22,000,000], [10.5133], [350.44], [31.39],
+        [4], [44,000,000], [15.8274], [527.58], [20.85],
+        [8], [88,000,000], [28.1074], [936.91], [11.74],
+        [16], [176,000,000], [60.0651], [2002.17], [5.49],
+        [*32*], [*352,000,000*], [*112.5194*], [*3750.65*], [*2.93*],
+      )
+    },
+    caption: [Vanda serial scaling vs. $K$ (`serial_scaling_K.csv`, $N=11"M", 30 "iters"$).]
   )
 )
 
-*Analysis of Serial Scaling:* In Figure 1(a) and Table 2, increasing $N$ by a factor of $597,638 / 25,000 = 23.91 times$ increases total runtime by $0.7943 / 0.0338 = 23.50 times$, maintaining an almost constant single-core throughput between $22.18$ and $23.05 "M points/sec"$. On log-log axes, the empirical curve has a slope of $0.996$, confirming exact $cal(O)(N)$ complexity. In Figure 1(b) and Table 3, increasing $K$ by $16 times$ (from $K=2$ to $K=32$) increases runtime by $2.6691 / 0.2663 = 10.02 times$ because the fixed $cal(O)(N dot d)$ feature accumulation step is amortized across more centroid comparisons as $K$ grows.
+*Serial Scaling Takeaways:* From $N = 500,000$ to $N = 11,000,000$ ($22 times$ more collision events), serial runtime scales by $28.0452 / 1.2805 = 21.90 times$, locking steady-state single-core Xeon throughput between $10.94$ and $11.77 "M points/sec"$ across all $308 "million"$ out-of-cache floats and confirming exact $cal(O)(N)$ complexity. Varying $K$ from $2$ to $32$ ($16 times$ more centroids) increases runtime by $112.5194 / 10.5133 = 10.70 times$ as fixed centroid accumulation cost is amortized at low $K$ before distance math ($cal(O)(N K d)$) dominates for $K >= 8$ (nearly exact doubling from $K=8 -> 16 -> 32$: $28.11 "s" -> 60.07 "s" -> 112.52 "s"$).
 
-= Pure MPI Parallelization: Strong & Weak Scaling up to 256 Cores
+= Pure MPI Parallelization on 72-Core Vanda (`src/kmeans_mpi.cpp`)
 
-== Distributed-Memory Domain Decomposition (`src/kmeans_mpi.cpp`)
-In `src/kmeans_mpi.cpp`, we parallelize Lloyd's K-Means across $P$ distributed MPI ranks using *1D Row-Block Domain Decomposition*:
-1. *Initialization & Scatter:* Rank $0$ loads the dataset, computes deterministic initial centroids (`step = N / K`), broadcasts $(N, d)$ and initial centroids via `MPI_Bcast`, and computes exact row counts $N_p = floor(N/P) + II(p < N mod P)$ and byte displacements for each rank $p in {0, dots, P-1}$. Using `MPI_Scatterv`, each rank receives only its local partition `local_data` ($N_p times d$ doubles), reducing per-rank memory footprint by $1/P$.
-2. *Local Expectation & Global `MPI_Allreduce` Synchronization:* Each rank evaluates distances on its $N_p$ points and accumulates `local_sums` ($K times d$ doubles) and `local_counts` ($K$ 64-bit integers). At the end of each iteration, two collective calls synchronize the sufficient statistics across all $P$ ranks:
-   ```cpp
-   MPI_Allreduce(local_sums.data(), global_sums.data(), K * d, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-   MPI_Allreduce(local_counts.data(), global_counts.data(), K, MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
-   ```
-3. *Instrumentation of Computation vs. Communication:* Using `MPI_Wtime()`, we separately record `Comp Time` (local distance evaluation + centroid division) and `MPI_Allreduce Comm Time` in every iteration.
+== Distributed-Memory Design & Communication Packing
+In `src/kmeans_mpi.cpp`, rows are partitioned evenly via 1D row-block decomposition ($N_p = floor(N/P) + II(p < N mod P)$) using either `MPI_Scatterv` (with 64-bit send/recv chunking for multi-billion-element safety) or distributed chunked parallel I/O (`-io parallel`) directly from the binary cache. After local assignment on $N_p$ points, each iteration invokes collective reduction (`MPI_Allreduce`) over $K times d = 224$ `MPI_DOUBLE` sums (`1,792` bytes), $K = 8$ `MPI_UNSIGNED_LONG_LONG` counts (`64` bytes), and scalar WCSS (`8` bytes). We compare default 3-call separate reductions against `-allreduce packed` (`-p`), which packs sums, counts, and SSE into a single contiguous `233`-double collective buffer to eliminate $2/3$ of MPI tree-synchronization barriers.
 
-== Pure MPI Strong Scaling & Impact of Communication on Runtime
-Figure 2 and Tables 4–5 present the Pure MPI *Strong Scaling* results on the full UCI HIGGS dataset ($N = 597,638, d = 28, K = 8, 50 "iterations"$), showing both the empirical measurements on our local 10-core Apple M5 processor ($P in {1, 2, 4, 8}$, `results/mpi_strong_scaling.csv`) and the multi-node scaling behavior up to *$P = 256$ CPU cores* across 4 homogeneous 72-core compute nodes (`results/mpi_256core_projection.csv` and `scripts/vanda_mpi_256cores.pbs`).
+== Strong Scaling & Impact of Communication on Full 11M HIGGS Rows
+Figure 2 and Tables 5–6 show the official Vanda strong-scaling and collective comparison results across $P in {1, 2, 4, 8, 16, 32, 64}$ physical CPU cores on all $N = 11,000,000$ events (`results/mpi_strong_scaling.csv`, `results/mpi_allreduce_comparison.csv`).
 
 #figure(
   image("figures/fig2_mpi_strong_scaling.png", width: 100%),
-  caption: [Log-log Pure MPI Strong Scaling on the UCI HIGGS dataset ($N=597,638, d=28, K=8, 50 "iterations"$): (a) decomposition of Total Time into Computation Time and `MPI_Allreduce` Communication Time across $P=1 dots 256$ cores; (b) Parallel Speedup $S(P)$ and Efficiency $E(P)$. All plotted values match Tables 4 and 5 exactly.]
+  caption: [Log-log Pure MPI Strong Scaling on NUS Vanda (`CN-111`, Intel Xeon Platinum 8452Y, $N = 11,000,000, d = 28, K = 8, 50 "iterations"$): (a) Total, Computation, and `MPI_Allreduce` Communication time across $P=1..64$; (b) Parallel Speedup $S(P)$ reaching $50.65 times$ ($79.1%$ efficiency) and $885.49 "M pts/s"$ at $P=64$.]
+)
+
+#figure(
+  {
+    set text(size: 8.0pt)
+    table(
+      columns: (0.45fr, 1.15fr, 0.85fr, 0.85fr, 0.85fr, 0.72fr, 0.82fr, 0.75fr, 0.75fr, 1.12fr, 1.32fr),
+      inset: 3.6pt,
+      align: right,
+      fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if r == 7 { rgb("#e8f8f5") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
+      [#text(fill: white, weight: "bold")[$P$]],
+      [#text(fill: white, weight: "bold")[Pts / Rank]],
+      [#text(fill: white, weight: "bold")[Total (s)]],
+      [#text(fill: white, weight: "bold")[Comp (s)]],
+      [#text(fill: white, weight: "bold")[Comm (s)]],
+      [#text(fill: white, weight: "bold")[Comm %]],
+      [#text(fill: white, weight: "bold")[M pts/s]],
+      [#text(fill: white, weight: "bold")[$S(P)$]],
+      [#text(fill: white, weight: "bold")[$E(P)$]],
+      [#text(fill: white, weight: "bold")[Max Err]],
+      [#text(fill: white, weight: "bold")[Final SSE]],
+      [1], [11,000,000], [31.4583], [31.4576], [0.0005], [0.0%], [17.48], [1.00x], [100.0%], [`0.000e+00`], [`1.584590e+08`],
+      [2], [5,500,000], [14.4035], [14.2815], [1.3279], [9.2%], [38.19], [2.18x], [109.2%], [`0.000e+00`], [`1.584590e+08`],
+      [4], [2,750,000], [7.8956], [7.5634], [1.2932], [16.4%], [69.66], [3.98x], [99.6%], [`0.000e+00`], [`1.584590e+08`],
+      [8], [1,375,000], [3.9428], [3.8821], [0.7755], [19.7%], [139.49], [7.98x], [99.7%], [`0.000e+00`], [`1.584590e+08`],
+      [16], [687,500], [2.4039], [2.2922], [0.7380], [30.7%], [228.80], [13.09x], [81.8%], [`0.000e+00`], [`1.584590e+08`],
+      [32], [343,750], [1.3659], [1.2615], [0.5703], [41.8%], [402.68], [23.03x], [72.0%], [`0.000e+00`], [`1.584590e+08`],
+      [*64*], [*171,875*], [*0.6211*], [*0.6191*], [*0.1323*], [*21.3%*], [*885.49*], [*50.65x*], [*79.1%*], [*`0.000e+00`*], [*`1.584590e+08`*],
+    )
+  },
+  caption: [Measured NUS Vanda Pure MPI Strong Scaling (`results/mpi_strong_scaling.csv`, $N=11,000,000, d=28, K=8, 50 "iterations"$).]
 )
 
 #figure(
   table(
-    columns: (0.7fr, 1.1fr, 1.0fr, 1.0fr, 1.0fr, 0.9fr, 0.9fr, 1.0fr, 1.2fr),
-    inset: 4.5pt,
+    columns: (0.7fr, 1.3fr, 1.3fr, 1.3fr, 1.3fr, 1.3fr, 1.3fr, 1.3fr),
+    inset: 4.0pt,
     align: right,
     fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
     [#text(fill: white, weight: "bold")[Ranks $P$]],
-    [#text(fill: white, weight: "bold")[Points / Rank]],
-    [#text(fill: white, weight: "bold")[Total (s)]],
-    [#text(fill: white, weight: "bold")[Comp (s)]],
-    [#text(fill: white, weight: "bold")[Comm (s)]],
-    [#text(fill: white, weight: "bold")[Comm %]],
-    [#text(fill: white, weight: "bold")[Speedup $S(P)$]],
-    [#text(fill: white, weight: "bold")[Efficiency $E(P)$]],
-    [#text(fill: white, weight: "bold")[Max Abs Error]],
-    [1], [597,638], [1.3101], [1.3100], [0.0000], [0.0%], [1.00x], [100.0%], [4.977e-12],
-    [2], [298,819], [0.6802], [0.6761], [0.0049], [0.7%], [1.93x], [96.3%], [5.484e-12],
-    [4], [149,409], [0.4031], [0.3983], [0.0108], [2.7%], [3.25x], [81.3%], [5.810e-12],
-    [8], [74,704], [0.4403], [0.3174], [0.1442], [32.8%], [2.98x], [37.2%], [6.763e-12],
+    [#text(fill: white, weight: "bold")[Separate Total (s)]],
+    [#text(fill: white, weight: "bold")[Separate Comm (s)]],
+    [#text(fill: white, weight: "bold")[Separate Comm %]],
+    [#text(fill: white, weight: "bold")[Packed Total (s)]],
+    [#text(fill: white, weight: "bold")[Packed Comm (s)]],
+    [#text(fill: white, weight: "bold")[Packed Comm %]],
+    [#text(fill: white, weight: "bold")[Max Err / SSE Parity]],
+    [1], [27.9578], [0.0004], [0.0%], [27.1864], [0.0005], [0.0%], [`0.000e+00`],
+    [2], [12.7625], [0.2708], [2.1%], [12.8766], [0.2505], [1.9%], [`0.000e+00`],
+    [4], [7.1514], [0.6237], [8.7%], [7.3244], [0.8413], [11.5%], [`0.000e+00`],
+    [8], [4.8595], [1.6457], [33.9%], [*3.8170*], [*0.6824*], [*17.9%*], [`0.000e+00`],
+    [16], [2.2522], [0.6979], [31.0%], [2.2817], [0.7215], [31.6%], [`0.000e+00`],
+    [32], [1.2595], [0.4586], [36.4%], [1.2709], [0.4729], [37.2%], [`0.000e+00`],
+    [64], [0.6579], [0.1758], [26.7%], [*0.6308*], [*0.1455*], [*23.1%*], [`0.000e+00`],
   ),
-  caption: [Measured local Pure MPI Strong Scaling on UCI HIGGS (`results/mpi_strong_scaling.csv`, $N=597,638, d=28, K=8, 50 "iterations"$).]
+  caption: [Separate (3-call) vs. Packed (1-call) `MPI_Allreduce` comparison on Vanda (`results/mpi_allreduce_comparison.csv`, $N=11"M"$).]
 )
 
-#figure(
-  table(
-    columns: (0.9fr, 1.2fr, 1.2fr, 1.2fr, 1.2fr, 1.1fr, 1.1fr),
-    inset: 4.0pt,
-    align: right,
-    fill: (c, r) => if r == 0 { rgb("#117864") } else if calc.odd(r) { rgb("#f4fbf9") } else { white },
-    [#text(fill: white, weight: "bold")[Cores $P$]],
-    [#text(fill: white, weight: "bold")[Points / Core]],
-    [#text(fill: white, weight: "bold")[Comp Time (s)]],
-    [#text(fill: white, weight: "bold")[Allreduce Comm (s)]],
-    [#text(fill: white, weight: "bold")[Total Time (s)]],
-    [#text(fill: white, weight: "bold")[Speedup $S(P)$]],
-    [#text(fill: white, weight: "bold")[Efficiency $E(P)$]],
-    [1], [597,638], [1.3100], [0.0000], [1.3100], [1.00x], [100.0%],
-    [2], [298,819], [0.6550], [0.0024], [0.6574], [1.99x], [99.6%],
-    [4], [149,409], [0.3275], [0.0048], [0.3323], [3.94x], [98.6%],
-    [8], [74,704], [0.1638], [0.0072], [0.1710], [7.66x], [95.8%],
-    [16], [37,352], [0.0819], [0.0096], [0.0915], [14.32x], [89.5%],
-    [32], [18,676], [0.0409], [0.0120], [0.0529], [24.75x], [77.3%],
-    [64], [9,338], [0.0205], [0.0144], [0.0349], [37.57x], [58.7%],
-    [128], [4,669], [0.0102], [0.0294], [0.0396], [33.05x], [25.8%],
-    [256], [2,334], [0.0051], [0.0336], [0.0387], [33.84x], [13.2%],
-  ),
-  caption: [Multi-node 256-core Pure MPI Strong Scaling up to 4 homogeneous 72-core nodes (`results/mpi_256core_projection.csv`).]
-)
+*Analysis of Vanda MPI Scaling & Communication Behavior:*
+1. *Superlinear Cache Scaling ($P=2 -> 8$):* At $P = 2$, runtime drops from $31.4583 "s"$ to $14.4035 "s"$ (*$2.18 times$ speedup, $109.2%$ efficiency*) as splitting $2.464 "GB"$ across both NUMA sockets doubles aggregate L3 cache and memory channels. Near-ideal scaling holds through $P = 4$ ($3.98 times$, $99.6%$) and $P = 8$ ($7.98 times$, $99.7%$).
+2. *Amdahl's Law Collective Saturation ($P=16 -> 64$):* As per-rank data shrinks to $343,750$ points ($P=32$), per-rank compute falls to $1.2615 "s"$ while blocking `MPI_Allreduce` barrier waiting time (`comp` + OS skew across ranks) rises to $0.5703 "s"$ (*$41.8%$ of total runtime*). At $P = 64$, balanced division yields $0.6211 "s"$ ($12.42 "ms/iter"$), achieving *$50.65 times$ speedup ($79.1%$ strong efficiency)* and *$885.49 "M points/sec"$* aggregate throughput.
+3. *Packed Single-Call `MPI_Allreduce`:* Under transient rank arrival skew (such as $P = 8$, where 3 separate barriers magnified wait jitter to $1.6457 "s"$ / $33.9%$), packing all statistics into 1 `MPI_Allreduce` reduces communication wait by *$2.41 times$* to $0.6824 "s"$ ($17.9%$), speeding up total execution by $21.5%$ ($3.8170 "s"$ vs. $4.8595 "s"$), and also delivers the fastest packed MPI runtime at $P = 64$ ($0.6308 "s"$ vs. $0.6579 "s"$). Note also that max-rank `comp_time_s` + `comm_time_s` can slightly exceed `total_time_s` when different ranks experience different iteration-level barrier vs compute peaks across the 50 iterations.
 
-*Impact of Communication on Strong-Scaling Runtime:*
-1. *High Efficiency in the Compute-Bound Regime ($P = 1 -> 4$):* On the 4 high-frequency Performance cores (P-cores) of the Apple M5 processor, computation time drops from $1.3100 "s"$ ($P=1$) to $0.6761 "s"$ ($P=2$, saving $0.6299 "s"$) and $0.3983 "s"$ ($P=4$, saving $0.9070 "s"$). Because `MPI_Allreduce` exchanges only $K times d = 224$ doubles ($1,792 "bytes"$) per iteration, communication takes just $0.0049 "s"$ ($0.7%$) at $P=2$ and $0.0108 "s"$ ($2.7%$) at $P=4$, yielding a $3.25 times$ speedup ($81.3%$ efficiency).
-2. *Synchronization Barrier & Heterogeneous Core Imbalance at $P = 8$:* When scaling to $P = 8$ on the Apple M5 (which has *4 Performance cores + 6 Efficiency cores*), 4 MPI ranks run on fast P-cores while 4 ranks run on slower E-cores. Although pure computation time drops further to $0.3174 "s"$, the fast P-core ranks finish their $74,704$-point partition early and stall at the blocking `MPI_Allreduce` barrier waiting for the E-core ranks. Consequently, measured `MPI_Allreduce` time jumps $13.35 times$ from $0.0108 "s"$ to *$0.1442 "s"$* (*$32.8%$ of total runtime*), increasing total time from $0.4031 "s"$ to $0.4403 "s"$.
-3. *Network Latency Floor at $P = 64 -> 256$ Cores Across Multiple Nodes:* Under the Hockney $alpha$–$beta$ collective communication model for tree-based `MPI_Allreduce`, communication time per iteration scales as $T_("comm")(P) = I_("iters") dot (alpha_("lat") + beta_("bw") K d) log_2 P$. As shown in Figure 2(a) and Table 5, on homogeneous cluster nodes (`vanda_mpi_256cores.pbs`), computation time shrinks as $1.3100 / P$ down to just $0.0051 "s"$ at $P = 256$ ($2,334$ points/core). Once $P > 64$ crosses node boundaries over InfiniBand, $cal(O)(log_2 P)$ inter-node latency ($0.0294 "s"$ at $P=128$, $0.0336 "s"$ at $P=256$) exceeds the $0.0051 "s"$ compute time, capping strong-scaling speedup at $37.57 times$ ($P=64$) and $33.84 times$ ($P=256$, $13.2%$ efficiency).
-
-== Pure MPI Weak Scaling Analysis (`results/mpi_weak_scaling.csv`)
-To evaluate Gustafson's Law, we fix the workload per MPI rank at $N_0 = 200,000 "points/rank"$ ($d = 28, K = 8, 30 "iterations"$) so the total dataset size grows linearly with $P$ ($N_("total") = 200,000 times P$, reaching $1.6"M"$ points at $P=8$ and $51.2"M"$ points at $P=256$). Figure 3 and Table 6 report the exact weak-scaling measurements.
+== Pure MPI Weak Scaling on Vanda ($N = 200"k" -> 12.8"M"$ Points)
+To verify Gustafson's Law, Figure 3 and Table 7 hold $N_0 = 200,000$ synthetic Gaussian points per rank constant across $P = 1 dots.h 64$ ranks (`results/mpi_weak_scaling.csv`), scaling total problem size from $200,000$ to $12,800,000$ points.
 
 #figure(
   image("figures/fig3_mpi_weak_scaling.png", width: 100%),
-  caption: [Log-log Pure MPI Weak Scaling ($N_0 = 200,000$ points/rank, $d=28, K=8, 30 "iterations"$): (a) Total, Computation, and `MPI_Allreduce` Communication Time; (b) Aggregate Throughput in million points/sec. All values match Table 6.]
+  caption: [Log-log Pure MPI Weak Scaling on NUS Vanda (`CN-111`, $N_0 = 200,000$ points/rank, $d=28, K=8, 30 "iterations"$): (a) Runtime breakdown ($200"k" -> 12.8"M"$ points); (b) Aggregate throughput scaling from $20.11 "M/s"$ ($P=1$) to $699.36 "M/s"$ ($P=64$).]
 )
 
 #figure(
-  table(
-    columns: (0.8fr, 1.3fr, 1.2fr, 1.1fr, 1.1fr, 1.1fr, 0.9fr, 1.3fr, 1.4fr),
-    inset: 4.5pt,
-    align: right,
-    fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
-    [#text(fill: white, weight: "bold")[Ranks $P$]],
-    [#text(fill: white, weight: "bold")[Total Pts $N$]],
-    [#text(fill: white, weight: "bold")[Pts/Rank $N_0$]],
-    [#text(fill: white, weight: "bold")[Total (s)]],
-    [#text(fill: white, weight: "bold")[Comp (s)]],
-    [#text(fill: white, weight: "bold")[Comm (s)]],
-    [#text(fill: white, weight: "bold")[Comm %]],
-    [#text(fill: white, weight: "bold")[Weak Eff $E_("weak")$]],
-    [#text(fill: white, weight: "bold")[Throughput]],
-    [1], [200,000], [200,000], [0.2927], [0.2926], [0.0000], [0.0%], [100.0%], [20.50 M pts/s],
-    [2], [400,000], [200,000], [0.2733], [0.2702], [0.0032], [1.2%], [107.1%], [43.91 M pts/s],
-    [4], [800,000], [200,000], [0.3695], [0.3569], [0.0324], [8.8%], [79.2%], [64.94 M pts/s],
-    [8], [1,600,000], [200,000], [0.5518], [0.4662], [0.1173], [21.2%], [53.0%], [86.98 M pts/s],
-  ),
-  caption: [Pure MPI Weak Scaling measurements (`results/mpi_weak_scaling.csv`, $200,000 "points/rank", d=28, K=8, 30 "iterations"$).]
+  {
+    set text(size: 8.3pt)
+    table(
+      columns: (0.6fr, 1.25fr, 1.0fr, 0.9fr, 0.9fr, 0.9fr, 0.85fr, 1.0fr, 1.6fr),
+      inset: 3.8pt,
+      align: right,
+      fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
+      [#text(fill: white, weight: "bold")[Ranks $P$]],
+      [#text(fill: white, weight: "bold")[Total Points $N$]],
+      [#text(fill: white, weight: "bold")[Pts / Rank]],
+      [#text(fill: white, weight: "bold")[Total (s)]],
+      [#text(fill: white, weight: "bold")[Comp (s)]],
+      [#text(fill: white, weight: "bold")[Comm (s)]],
+      [#text(fill: white, weight: "bold")[Comm %]],
+      [#text(fill: white, weight: "bold")[Weak Eff]],
+      [#text(fill: white, weight: "bold")[Throughput]],
+      [1], [200,000], [200,000], [0.2983], [0.2982], [0.0000], [0.0%], [100.0%], [20.11 M pts/s],
+      [2], [400,000], [200,000], [0.2820], [0.2816], [0.0079], [2.8%], [*105.8%*], [42.56 M pts/s],
+      [4], [800,000], [200,000], [0.4223], [0.4213], [0.1438], [34.1%], [70.6%], [56.83 M pts/s],
+      [8], [1,600,000], [200,000], [0.4253], [0.4246], [0.1510], [35.5%], [70.1%], [112.85 M pts/s],
+      [16], [3,200,000], [200,000], [0.4788], [0.4763], [0.2021], [42.2%], [62.3%], [200.50 M pts/s],
+      [32], [6,400,000], [200,000], [0.5832], [0.5822], [0.3049], [52.3%], [51.1%], [329.24 M pts/s],
+      [*64*], [*12,800,000*], [*200,000*], [*0.5491*], [*0.5360*], [*0.2068*], [*37.7%*], [*54.3%*], [*699.36 M pts/s*],
+    )
+  },
+  caption: [Vanda Pure MPI Weak Scaling (`results/mpi_weak_scaling.csv`, fixed $200,000 "pts/rank", 30 "iterations"$).]
 )
 
-*Weak Scaling Discussion:* Because computation per rank remains constant ($200,000$ points/rank), `MPI_Allreduce` accounts for only $1.2%$ ($0.0032 "s"$) at $P=2$ and $8.8%$ ($0.0324 "s"$) at $P=4$. At $P=2$, weak-scaling efficiency reaches *$107.1%$* ($0.2733 "s"$ vs. $0.2927 "s"$) due to constructive L2 cache sharing and dual-channel memory controller utilization, while aggregate throughput scales from *$20.50 "M pts/s"$* ($P=1$) to *$86.98 "M pts/s"$* ($P=8$).
+Expanding the total workload $64 times$ from $200,000$ to $12,800,000$ collision points increases wall-clock runtime by less than $1.85 times$ ($0.2983 "s" -> 0.5491 "s"$), maintaining $54.3%$ weak efficiency and scaling throughput *$34.8 times$* from $20.11 "M pts/s"$ ($P=1$) to *$699.36 "M pts/s"$* ($P=64$).
 
-= Hybrid `MPI + OpenMP` & Hardware GPU Acceleration (`MPI + X`)
+= Hybrid `MPI + OpenMP` Design Choices & NUMA Scaling (`src/kmeans_omp.cpp`)
 
-== Parallel Design Decisions in `MPI + OpenMP` (`src/kmeans_omp.cpp`)
-To exploit multi-core shared-memory nodes without launching one MPI process per core, `src/kmeans_omp.cpp` initializes MPI with `MPI_Init_thread(..., MPI_THREAD_FUNNELED, ...)` and spawns $T$ OpenMP threads per MPI rank, plus `#pragma omp simd reduction(+:dist)` vectorization on inner distance loops. We systematically investigated three critical parallel design choices:
-
-*Design Decision 1 — Cache-Padded Thread-Private Accumulators vs. Atomic Shared Updates:*
-When $T$ OpenMP threads assign local points $i in {0, dots, N_p-1}$ to clusters, updating a single shared array `local_sums[best_k * d + j]` requires `#pragma omp atomic update` (`-a atomic`). In `private` mode (`-a private`), we pre-allocate a contiguous per-thread buffer `all_thread_sums[tid * stride_sums]` where `stride_sums = ((K * d + 7) / 8) * 8` pads each thread's accumulator to a *64-byte cache-line boundary* ($8 times 8"-byte doubles" = 64 "bytes"$). During the `#pragma omp for schedule(runtime) nowait` loop, each thread writes exclusively to its own L1-resident slice with *zero locks or atomics*, followed by a deterministic sequential reduction across the $T$ thread buffers at the end of each iteration.
-
-*Design Decision 2 — OpenMP Loop Scheduling (`static`, `dynamic,1024`, `guided`):*
-We evaluated three loop schedules on the UCI HIGGS dataset ($P=1, T=4, K=8, 50 "iterations"$): `static` (equal contiguous blocks of $N_p/T$ rows), `dynamic,1024` (atomic work-queue chunks of $1,024$ points), and `guided` (exponentially decreasing chunk sizes down to $1,024$). Figure 4 and Table 7 report the exact results from `results/omp_design_choices.csv`.
+== OpenMP Accumulation Modes & Loop Scheduling on 11M Rows
+In `src/kmeans_omp.cpp` (`MPI_THREAD_FUNNELED`), we evaluate three design choices on Vanda node `CN-111` ($P=1$ rank, $T=4$ threads, $N=11,000,000, K=8, 50 "iterations"$, `results/omp_design_choices.csv`):
+1. *Cache-Line Padded Thread-Private Buffers vs. `#pragma omp atomic`:* In `private` mode, each thread accumulates into its own row inside a single contiguous buffer padded to 64-byte L1 cache-line boundaries (`stride_sums = ((K * d + 7) / 8) * 8`) with `#pragma omp for schedule(runtime) nowait`, merging across $T$ buffers once per iteration with zero atomics.
+2. *Dynamic/Guided vs. Static Scheduling:* `static` divides rows equally, whereas `dynamic,1024` and `guided` rebalance work chunks across cores dynamically.
+3. *Standalone OpenMP vs. MPI+OpenMP (`P=1`):* Compiling `-DSTANDALONE_OMP` eliminates MPI runtime overhead while sharing identical `#pragma omp simd` vectorization.
 
 #figure(
   image("figures/fig4_omp_design_choices.png", width: 100%),
-  caption: [Impact of OpenMP parallel design choices on the UCI HIGGS dataset ($P=1, T=4, N=597,638, d=28, K=8, 50 "iterations"$): (a) Total runtime (log scale) and (b) Throughput (log scale) across `private` (`static`, `dynamic`, `guided`) vs. `atomic` accumulation. All values match Table 7.]
+  caption: [Impact of OpenMP parallel design decisions on full 11,000,000-row UCI HIGGS (`CN-111`, $P=1, T=4, K=8, 50 "iterations"$): (a) Log-scale runtime showing `atomic` contention ($156.0935 "s"$) vs. cache-padded `private` (`11.5415 s` with `guided`); (b) Log-scale throughput ($13.54 times$ higher throughput).]
 )
 
 #figure(
   table(
-    columns: (2.0fr, 1.1fr, 1.1fr, 1.1fr, 1.3fr, 1.3fr, 1.2fr),
-    inset: 4.5pt,
+    columns: (1.9fr, 1.0fr, 1.0fr, 1.0fr, 1.2fr, 1.1fr, 1.1fr),
+    inset: 4.2pt,
     align: (left, center, right, right, right, right, right),
     fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if r == 3 { rgb("#e8f8f5") } else if r == 4 { rgb("#fdedec") } else { white },
     [#text(fill: white, weight: "bold")[Accumulation Mode]],
-    [#text(fill: white, weight: "bold")[OMP Schedule]],
-    [#text(fill: white, weight: "bold")[Total Time (s)]],
-    [#text(fill: white, weight: "bold")[Avg Iter (ms)]],
+    [#text(fill: white, weight: "bold")[Schedule]],
+    [#text(fill: white, weight: "bold")[Total (s)]],
+    [#text(fill: white, weight: "bold")[Iter (ms)]],
     [#text(fill: white, weight: "bold")[Throughput]],
     [#text(fill: white, weight: "bold")[Speedup vs Atomic]],
-    [#text(fill: white, weight: "bold")[Max Error vs Serial]],
-    [Cache-Padded Private (`private`)], [`static`], [0.3265 s], [6.53 ms], [91.51 M pts/s], [5.65x], [5.810e-12],
-    [Cache-Padded Private (`private`)], [`dynamic,1024`], [0.3054 s], [6.11 ms], [97.85 M pts/s], [6.04x], [5.810e-12],
-    [*Cache-Padded Private (`private`)*], [*`guided`*], [*0.2947 s*], [*5.89 ms*], [*101.40 M pts/s*], [*6.26x*], [*5.813e-12*],
-    [Shared Atomic (`#pragma omp atomic`)], [`static`], [1.8447 s], [36.89 ms], [16.20 M pts/s], [1.00x (Baseline)], [4.982e-12],
+    [#text(fill: white, weight: "bold")[Max Err]],
+    [Cache-Padded Private (MPI `P=1`)], [`static`], [14.1680], [283.36], [38.82 M/s], [11.02x], [`0.000e+00`],
+    [Cache-Padded Private (MPI `P=1`)], [`dynamic`], [11.5427], [230.85], [47.65 M/s], [13.52x], [`0.000e+00`],
+    [*Cache-Padded Private (MPI `P=1`)*], [*`guided`*], [*11.5415*], [*230.83*], [*47.65 M/s*], [*13.52x*], [*`0.000e+00`*],
+    [Shared Atomic (`#pragma omp atomic`)], [`static`], [156.0935], [3121.87], [3.52 M/s], [1.00x], [`0.000e+00`],
+    [Standalone OpenMP (No MPI)], [`static`], [14.6160], [292.32], [37.63 M/s], [10.68x], [`0.000e+00`],
   ),
-  caption: [Comparison of OpenMP accumulation strategies and loop schedules (`results/omp_design_choices.csv`, $P=1, T=4$).]
+  caption: [OpenMP parallel design decisions on full 11,000,000 HIGGS rows (`results/omp_design_choices.csv`, $P=1, T=4$).]
 )
 
-*Why Cache-Padded Private Buffers Beat Atomics by $6.26 times$:* As shown in Figure 4 and Table 7, `#pragma omp atomic` takes *$1.8447 "s"$* ($36.89 "ms/iter"$)—slower than the 1-core serial baseline ($1.3380 "s"$)! Because all 4 threads execute $597,638 times (1 + 28) = 17,331,502$ atomic read-modify-write instructions per iteration on the same $224$ memory addresses, the CPU's MESI cache-coherence protocol continuously invalidates L1/L2 cache lines across cores. Switching to 64-byte padded private buffers saves *$1.5500 "seconds"$* ($0.2947 "s"$ vs. $1.8447 "s"$), achieving a *$6.26 times$ speedup* and *$101.40 "M points/sec"$*. Furthermore, `guided` scheduling ($0.2947 "s"$) outperforms `static` ($0.3265 "s"$) by $9.7%$ by dynamically smoothing minor OS/thermal jitter at the end of each iteration with minimal queue overhead.
+*Why Cache-Padded Private Accumulation Wins by $13.52 times$:* In `atomic` mode, 4 Xeon cores execute $11,000,000 times 29 = 319 "million"$ atomic read-modify-write operations *per iteration* on just $224$ shared array elements, triggering relentless MESI cache-line invalidations that inflate runtime to *$156.0935 "s"$* ($3,121.87 "ms/iter"$, $3.18 times$ slower than 1-core serial!). Padded thread-private buffers cut runtime to $11.5415 "s"$ (*$13.52 times$ faster wall-clock time*, *$13.54 times$ higher throughput*), and `guided` / `dynamic` scheduling beat `static` by $18.5%$ ($11.5415 "s"$ vs. $14.1680 "s"$) by smoothing OS scheduling jitter across physical cores.
 
-== Hybrid Trade-Off: MPI Ranks ($P$) vs. OpenMP Threads ($T$) (`results/hybrid_mpi_omp_grid.csv`)
-*Design Decision 3 — Choosing the Optimal $P times T$ Ratio:* Figure 5 and Table 8 evaluate all 10 combinations of $(P, T)$ across total core counts $C = P times T in {1, 2, 4, 8}$ on the full UCI HIGGS dataset ($50 "iterations", K=8$).
+== Full 72-Core Hybrid `MPI Ranks (P) x OpenMP Threads (T)` Grid (`results/hybrid_mpi_omp_grid.csv`)
+Figure 5 and Table 9 present all 21 measured $(P, T)$ hybrid combinations across $C = P times T in {1, 8, 16, 36, 72}$ physical cores on dual-socket Vanda node `CN-111` for $N = 11,000,000, K = 8, 50 "iterations"$.
 
 #figure(
   image("figures/fig5_hybrid_mpi_omp_grid.png", width: 100%),
-  caption: [Hybrid `MPI + OpenMP` scaling across $(P, T)$ configurations on UCI HIGGS ($N=597,638, d=28, K=8, 50 "iterations"$): (a) Log-log runtime vs. total cores $C = P times T$; (b) Computation vs. `MPI_Allreduce` communication breakdown across the four 8-core configurations. All values match Table 8.]
+  caption: [Hybrid `MPI + OpenMP` topology scaling across 72 cores on Vanda (`CN-111`, $N=11,000,000, K=8, 50 "iterations"$): (a) Log-log runtime comparing Pure OpenMP (`1xC`), NUMA-aligned Hybrid (`2xT`), and Flat MPI (`Cx1`); (b) Full 72-core configuration trade-off.]
 )
 
 #figure(
   table(
-    columns: (0.7fr, 0.6fr, 0.6fr, 1.0fr, 1.0fr, 1.0fr, 0.95fr, 1.0fr, 1.1fr, 0.9fr, 0.9fr, 1.0fr),
-    inset: 4.0pt,
+    columns: (0.7fr, 0.55fr, 0.55fr, 0.95fr, 0.95fr, 0.9fr, 0.85fr, 0.9fr, 1.0fr, 0.85fr, 0.85fr, 1.0fr),
+    inset: 3.4pt,
     align: right,
-    fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if r == 7 { rgb("#e8f8f5") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
+    fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if r == 16 or r == 21 { rgb("#e8f8f5") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
     [#text(fill: white, weight: "bold")[Cores]],
     [#text(fill: white, weight: "bold")[$P$]],
     [#text(fill: white, weight: "bold")[$T$]],
@@ -344,130 +372,214 @@ We evaluated three loop schedules on the UCI HIGGS dataset ($P=1, T=4, K=8, 50 "
     [#text(fill: white, weight: "bold")[Comm %]],
     [#text(fill: white, weight: "bold")[Iter (ms)]],
     [#text(fill: white, weight: "bold")[M pts/s]],
-    [#text(fill: white, weight: "bold")[$S(P,T)$]],
-    [#text(fill: white, weight: "bold")[$E(P,T)$]],
+    [#text(fill: white, weight: "bold")[$S$]],
+    [#text(fill: white, weight: "bold")[$E$]],
     [#text(fill: white, weight: "bold")[Max Err]],
-    [1], [1], [1], [0.9088], [0.9087], [0.0000], [0.0%], [18.18], [32.88], [1.00x], [100.0%], [4.98e-12],
-    [2], [1], [2], [0.4890], [0.4889], [0.0000], [0.0%], [9.78], [61.11], [1.86x], [92.9%], [5.48e-12],
-    [2], [2], [1], [0.4658], [0.4590], [0.0119], [2.6%], [9.32], [64.15], [1.95x], [97.6%], [5.48e-12],
-    [4], [1], [4], [0.3047], [0.3046], [0.0000], [0.0%], [6.09], [98.08], [2.98x], [74.6%], [5.81e-12],
-    [4], [2], [2], [0.2972], [0.2943], [0.0112], [3.8%], [5.94], [100.54], [3.06x], [76.4%], [5.81e-12],
-    [4], [4], [1], [0.2943], [0.2853], [0.0136], [4.6%], [5.89], [101.55], [3.09x], [77.2%], [5.81e-12],
-    [*8*], [*1*], [*8*], [*0.2500*], [*0.2498*], [*0.0000*], [*0.0%*], [*5.00*], [*119.53*], [*3.64x*], [*45.4%*], [*6.76e-12*],
-    [8], [2], [4], [0.2661], [0.2631], [0.0096], [3.6%], [5.32], [112.28], [3.42x], [42.7%], [6.76e-12],
-    [8], [4], [2], [0.2660], [0.2555], [0.0200], [7.5%], [5.32], [112.33], [3.42x], [42.7%], [6.76e-12],
-    [8], [8], [1], [0.2624], [0.1969], [0.0711], [27.1%], [5.25], [113.86], [3.46x], [43.3%], [6.76e-12],
+    [1], [1], [1], [29.3235], [29.3227], [0.0005], [0.0%], [586.47], [18.76], [1.00x], [100.0%], [`0.000e+00`],
+    [8], [1], [8], [10.7194], [10.7190], [0.0002], [0.0%], [214.39], [51.31], [2.74x], [34.2%], [`0.000e+00`],
+    [8], [8], [1], [4.3865], [4.2980], [0.6348], [14.5%], [87.73], [125.38], [6.68x], [83.6%], [`0.000e+00`],
+    [16], [1], [16], [7.3621], [7.3618], [0.0002], [0.0%], [147.24], [74.71], [3.98x], [24.9%], [`0.000e+00`],
+    [16], [2], [8], [5.2241], [5.1241], [0.2322], [4.4%], [104.48], [105.28], [5.61x], [35.1%], [`0.000e+00`],
+    [16], [4], [4], [5.2148], [5.2093], [1.9061], [36.6%], [104.30], [105.47], [5.62x], [35.1%], [`0.000e+00`],
+    [16], [8], [2], [4.2113], [4.1192], [1.1634], [27.6%], [84.23], [130.60], [6.96x], [43.5%], [`0.000e+00`],
+    [16], [16], [1], [2.6927], [2.6358], [0.9290], [34.5%], [53.85], [204.26], [10.89x], [68.1%], [`0.000e+00`],
+    [36], [1], [36], [3.4593], [3.4589], [0.0002], [0.0%], [69.19], [158.99], [8.48x], [23.5%], [`0.000e+00`],
+    [36], [2], [18], [2.3079], [2.2916], [0.1264], [5.5%], [46.16], [238.31], [12.71x], [35.3%], [`0.000e+00`],
+    [36], [4], [9], [2.8700], [2.8690], [1.3679], [47.7%], [57.40], [191.64], [10.22x], [28.4%], [`0.000e+00`],
+    [36], [9], [4], [2.5158], [2.4758], [1.0486], [41.7%], [50.32], [218.62], [11.66x], [32.4%], [`0.000e+00`],
+    [36], [18], [2], [2.7040], [2.6253], [1.3904], [51.4%], [54.08], [203.40], [10.84x], [30.1%], [`0.000e+00`],
+    [36], [36], [1], [1.1727], [1.0564], [0.3586], [30.6%], [23.45], [469.01], [25.01x], [69.5%], [`0.000e+00`],
+    [72], [1], [72], [2.0441], [2.0430], [0.0003], [0.0%], [40.88], [269.07], [14.35x], [19.9%], [`0.000e+00`],
+    [*72*], [*2*], [*36*], [*1.3244*], [*1.3222*], [*0.0431*], [*3.3%*], [*26.49*], [*415.29*], [*22.14x*], [*30.8%*], [*`0.000e+00`*],
+    [72], [4], [18], [1.9089], [1.9070], [0.7734], [40.5%], [38.18], [288.12], [15.36x], [21.3%], [`0.000e+00`],
+    [72], [8], [9], [1.4987], [1.4906], [0.3309], [22.1%], [29.97], [366.99], [19.57x], [27.2%], [`0.000e+00`],
+    [72], [18], [4], [1.5197], [1.5128], [0.5723], [37.7%], [30.39], [361.92], [19.30x], [26.8%], [`0.000e+00`],
+    [72], [36], [2], [1.3566], [1.3354], [0.6123], [45.1%], [27.13], [405.42], [21.62x], [30.0%], [`0.000e+00`],
+    [*72*], [*72*], [*1*], [*0.6448*], [*0.6430*], [*0.1479*], [*22.9%*], [*12.90*], [*853.03*], [*45.48x*], [*63.2%*], [*`0.000e+00`*],
   ),
-  caption: [Hybrid `MPI + OpenMP` grid measurements across $(P, T)$ combinations (`results/hybrid_mpi_omp_grid.csv`, $50 "iterations"$).]
+  caption: [Full 72-core Hybrid `MPI + OpenMP` scaling grid on NUS Vanda (`results/hybrid_mpi_omp_grid.csv`, $N=11,000,000, K=8, 50 "iters"$).]
 )
 
-*Key Findings from the Hybrid $P times T$ Grid:*
-- Note first that even at $(P=1, T=1)$, `kmeans_omp` ($0.9088 "s"$) is $1.47 times$ faster than unvectorized `kmeans_serial` ($1.3380 "s"$) thanks to `#pragma omp simd` inner-loop vectorization.
-- At $C = 8$ cores (Figure 5b), running 8 separate MPI ranks (`P=8, T=1`) spends *$0.0711 "s"$ ($27.1%$ of runtime)* inside `MPI_Allreduce`. Using a Hybrid `P=2, T=4` topology (e.g., 1 MPI rank per socket/NUMA domain with 4 OpenMP threads) cuts `MPI_Allreduce` communication time by *$7.4 times$* down to just *$0.0096 "s"$* ($3.6%$), while `P=1, T=8` eliminates inter-rank MPI traffic completely ($0.0000 "s"$) and achieves the fastest overall CPU runtime of *$0.2500 "s"$* (*$3.64 times$ speedup over $1 times 1$ `kmeans_omp`*, and *$5.35 times$ speedup over `kmeans_serial`*, reaching *$119.53 "M points/sec"$*).
+*NUMA & Topology Analysis:* Notice two striking supercomputer insights from Table 9:
+1. *NUMA Socket Alignment (`1x72` vs. `2x36`):* On dual-socket `CN-111` (36 cores per NUMA node), pure OpenMP (`1x72`, $2.0441 "s"$) allocates `local_data` in one socket's memory (`first-touch` serial load by Rank 0), forcing Socket 1 threads to fetch points across the UPI interconnect and merging $72$ thread-private buffers serially. Placing *one MPI rank per NUMA socket* (`2x36`, $1.3244 "s"$) splits `local_data` cleanly across local DRAM controllers with only $3.3%$ MPI overhead ($0.0431 "s"$), cutting runtime by *$35.2%$ ($1.54 times$ speedup over `1x72`)*! The identical NUMA win appears at 36 cores (`2x18`: $2.3079 "s"$ vs. `1x36`: $3.4593 "s"$).
+2. *First-Touch Memory & Serial Thread-Reduction Avoided by `72x1`:* At 72 cores, flat MPI (`72x1`) achieves *$0.6448 "s"$* ($45.48 times$ speedup, $63.2%$ efficiency, *$853.03 "M pts/s"$*, or *$76.13 times$ faster than 1-core `kmeans_serial` at $49.0870 "s"$*) because each rank owns local pages in its core's closest LLC slice and tree-based `MPI_Allreduce` merges all 72 ranks in $cal(O)(log_2 P)$ steps rather than serial loop reduction.
 
-== Hardware GPU Acceleration (`src/kmeans_metal_gpu.mm` & `src/kmeans_cuda.cu`)
-In compliance with Lecture 12 Slide 37 (*"If you choose X=OpenMP, then you also have to test on at least one GPU"*), we implemented three GPU acceleration backends:
-1. *`src/kmeans_cuda.cu` (`MPI + CUDA` for NUS Vanda NVIDIA GPUs):* Each CUDA thread block cooperatively loads the $K times d$ centroids into on-chip `__shared__ double s_centroids[]` memory, evaluates distances for one point per thread (`idx = blockIdx.x * blockDim.x + threadIdx.x`), accumulates partial sums in block shared memory (`s_sums`), and flushes once per block to global GPU memory before `MPI_Allreduce`.
-2. *`src/kmeans_omp.cpp -g` (OpenMP Target GPU Offload):* Uses `#pragma omp target teams distribute parallel for map(to: raw_data[0:nd], raw_cent[0:kd])` for NVIDIA `nvc++ -mp=gpu` compilation on Vanda (`scripts/vanda_hybrid_gpu.pbs`).
-3. *`src/kmeans_metal_gpu.mm` (`MPI + Apple Metal GPU Shader` on Apple M5 GPU):* Uses Unified Shared Memory (`MTLResourceStorageModeShared`, eliminating PCIe host-to-device copy overhead) and dispatches a Metal compute shader (`kmeans_assign_kernel`) across 256-thread threadgroups. Inside the shader, threads cooperatively cache the $K times d$ centroids in fast on-chip `threadgroup float s_centroids[1024]` SRAM (`threadgroup_barrier(mem_flags::mem_threadgroup)`) and execute hardware fused multiply-add (`fma(diff, diff, dist)`) instructions across all $K$ clusters.
+= Hardware GPU Acceleration (`MPI + CUDA`, OpenMP `-mp=gpu`, `MPI + Metal`)
 
-Figure 6 and Table 9 compare 1-Core CPU (`P=1, T=1`), 4-Core CPU OpenMP (`P=1, T=4`), and the Apple M5 GPU (`kmeans_metal_gpu`) across increasing cluster counts $K in {8, 16, 32}$ (`results/gpu_benchmark.csv`, $N = 597,638, d = 28, 30 "iterations"$).
+== GPU Parallel Architecture & Shared-Memory Bounds Guard
+1. *`src/kmeans_cuda.cu` (`MPI + CUDA` on Vanda NVIDIA A40):* Uses 256-thread blocks (`cudaMalloc`/`cudaMemcpy` once outside the iteration loop) and dynamically caches both centroids (`K*d` doubles) and block-local partial sums/counts inside on-chip `__shared__` memory whenever `2*K*d*8 + K*8 <= cudaDevAttrMaxSharedMemoryPerBlock`, falling back cleanly to global DRAM for huge $K$ (`Test Suite 3` verified at $K=40, d=32$). Our `atomicAddDouble` wrapper invokes native Ampere hardware `atomicAdd(double*, double)` on `sm_60+` (`-arch=sm_86`) and an `atomicCAS` loop fallback on older architectures, avoiding CUDA 12.9 header overload conflicts.
+2. *`src/kmeans_omp.cpp -g` (OpenMP GPU Target Offload):* Compiles with `nvc++ -mp=gpu` using `#pragma omp target teams distribute parallel for` for portable directive-based GPU offloading.
+3. *`src/kmeans_metal_gpu.mm` (`MPI + Apple Metal GPU Shader`):* Maps unified host/GPU buffers (`MTLResourceStorageModeShared`, zero PCIe copy overhead) on Apple Silicon M5, caches centroids in `threadgroup float s_centroids[1024]`, and executes fused multiply-add (`fma`) instructions across 256-thread threadgroups.
+
+== Empirical NVIDIA A40 (`N = 11M`) & Apple M5 Metal GPU Results
+Figure 6 and Tables 10–12 report the authentic GPU measurements across cluster counts $K in {8, 16, 32}$ and 50-iteration backend comparisons.
 
 #figure(
   image("figures/fig6_gpu_scaling.png", width: 100%),
-  caption: [Log-log GPU vs. CPU scaling across cluster counts $K in {8, 16, 32}$ on UCI HIGGS ($N=597,638, d=28, 30 "iterations"$): (a) Execution time comparing 1-Core CPU, 4-Core OpenMP, Apple M5 GPU Total Time, and GPU Distance Kernel Time; (b) GPU Speedup vs. 1-Core CPU and 4-Core OpenMP. All values match Table 9.]
+  caption: [Vanda NVIDIA A40 GPU Acceleration on full UCI HIGGS ($N=11,000,000, d=28$): (a) Log-log scaling across $K in {8, 16, 32}$ ($30 "iters"$) vs. 1-core and 4-core Xeon CPUs; (b) Complete 50-iteration runtime comparison across Vanda execution backends ($K=8$, native CUDA achieves $9.67 times$ speedup over Serial C++ and $3.10 times$ over OpenMP GPU offload).]
 )
 
 #figure(
   table(
-    columns: (0.6fr, 1.2fr, 1.1fr, 1.1fr, 1.1fr, 1.1fr, 1.1fr, 1.2fr, 1.2fr, 1.1fr),
+    columns: (0.6fr, 1.3fr, 1.0fr, 1.0fr, 1.0fr, 1.0fr, 1.0fr, 1.0fr, 1.1fr, 1.1fr),
     inset: 3.8pt,
     align: right,
-    fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if r == 3 { rgb("#e8f8f5") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
+    fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if r == 1 { rgb("#e8f8f5") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
     [#text(fill: white, weight: "bold")[$K$]],
-    [#text(fill: white, weight: "bold")[Dist Evals/Iter]],
-    [#text(fill: white, weight: "bold")[1-Core CPU]],
-    [#text(fill: white, weight: "bold")[4-Core OMP]],
-    [#text(fill: white, weight: "bold")[GPU Total]],
-    [#text(fill: white, weight: "bold")[GPU Kernel]],
-    [#text(fill: white, weight: "bold")[Host Accum]],
+    [#text(fill: white, weight: "bold")[GPU Device]],
+    [#text(fill: white, weight: "bold")[1C CPU (s)]],
+    [#text(fill: white, weight: "bold")[4C OMP (s)]],
+    [#text(fill: white, weight: "bold")[GPU Tot (s)]],
+    [#text(fill: white, weight: "bold")[GPU Kern (s)]],
     [#text(fill: white, weight: "bold")[Speedup vs 1C]],
     [#text(fill: white, weight: "bold")[Speedup vs 4C]],
-    [#text(fill: white, weight: "bold")[GPU M pts/s]],
-    [8], [4,781,104], [0.5621 s], [0.1871 s], [0.2022 s], [0.1489 s], [0.0532 s], [2.78x], [0.93x], [88.65],
-    [16], [9,562,208], [0.9243 s], [0.3100 s], [*0.1459 s*], [*0.0945 s*], [0.0513 s], [*6.34x*], [*2.12x*], [*122.90*],
-    [*32*], [*19,124,416*], [*1.6754 s*], [*0.5563 s*], [*0.2070 s*], [*0.1557 s*], [*0.0512 s*], [*8.09x*], [*2.69x*], [*86.62*],
+    [#text(fill: white, weight: "bold")[M pts/s]],
+    [#text(fill: white, weight: "bold")[Centroid RMSE]],
+    [*8*], [NVIDIA A40], [17.3726], [5.1064], [*3.0461*], [3.0453], [*5.70x*], [1.68x], [*108.33*], [`1.509e-12`],
+    [16], [NVIDIA A40], [32.7197], [10.1117], [5.7795], [5.7787], [5.66x], [*1.75x*], [57.10], [`1.521e-12`],
+    [32], [NVIDIA A40], [58.3357], [16.0496], [12.4475], [12.4466], [4.69x], [1.29x], [26.51], [`1.562e-12`],
   ),
-  caption: [Hardware GPU acceleration benchmark on UCI HIGGS (`results/gpu_benchmark.csv`, $N=597,638, d=28, 30 "iterations"$).]
+  caption: [Vanda NVIDIA A40 CUDA GPU scaling on all 11,000,000 HIGGS rows (`results/gpu_benchmark.csv`, $30 "iterations"$).]
 )
 
-*GPU Arithmetic Intensity & Roofline Analysis:* At $K = 8$ ($4.78"M"$ distance evaluations/iter), each point performs only $8 times 28 = 224$ FP operations per 28-float memory read, so GPU command-buffer dispatch overhead makes 4-core CPU OpenMP ($0.1871 "s"$) slightly faster than GPU total time ($0.2022 "s"$, $0.93 times$), though the GPU still beats 1-core CPU by *$2.78 times$* ($0.5621 "s"$). As $K$ increases to $16$ and $32$ ($19.12"M"$ distance evaluations/iter), every 28-float point loaded from Unified Memory is reused $32 times$ against the on-chip `threadgroup` centroid cache (`s_centroids`). Consequently, at $K = 16$, GPU total time is *$0.1459 "s"$* (*$6.34 times$ faster than 1-core CPU*, *$2.12 times$ faster than 4-core OpenMP*), and at $K = 32$, GPU total time is *$0.2070 "s"$* vs. $1.6754 "s"$ on 1-core CPU (saving *$1.4684 "s"$*, an *$8.09 times$ speedup*) and $0.5563 "s"$ on 4-core OpenMP (*$2.69 times$ speedup*).
+#grid(
+  columns: (0.98fr, 1.02fr),
+  gutter: 8pt,
+  figure(
+    {
+      set text(size: 8.2pt)
+      table(
+        columns: (1.9fr, 0.95fr, 1.05fr, 0.9fr),
+        inset: 3.6pt,
+        align: (left, right, right, right),
+        fill: (c, r) => if r == 0 { rgb("#117864") } else if r == 4 { rgb("#e8f8f5") } else { white },
+        [#text(fill: white, weight: "bold")[Vanda 50-Iter Backend ($N=11"M", K=8$)]],
+        [#text(fill: white, weight: "bold")[Time (s)]],
+        [#text(fill: white, weight: "bold")[M pts/s]],
+        [#text(fill: white, weight: "bold")[Speedup]],
+        [1-Core Serial C++ (`CN-111`)], [49.0870], [11.20], [1.00x],
+        [OpenMP CPU SIMD (`P=1, T=1`)], [29.3235], [18.76], [1.67x],
+        [OpenMP GPU Target (`-mp=gpu`, A40)], [15.7554], [34.91], [3.12x],
+        [*Native CUDA (`__shared__`, NVIDIA A40)*], [*5.0759*], [*108.36*], [*9.67x*],
+      )
+    },
+    caption: [50-iteration Vanda backend comparison ($N=11"M", K=8$).]
+  ),
+  figure(
+    {
+      set text(size: 8.2pt)
+      table(
+        columns: (0.48fr, 0.98fr, 0.98fr, 0.98fr, 0.85fr, 1.35fr),
+        inset: 3.6pt,
+        align: right,
+        fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if r == 3 { rgb("#e8f8f5") } else { white },
+        [#text(fill: white, weight: "bold")[$K$]],
+        [#text(fill: white, weight: "bold")[1C CPU (s)]],
+        [#text(fill: white, weight: "bold")[4C OMP (s)]],
+        [#text(fill: white, weight: "bold")[Metal Tot (s)]],
+        [#text(fill: white, weight: "bold")[vs 1C]],
+        [#text(fill: white, weight: "bold")[RMSE (FP32)]],
+        [8], [0.5657], [0.1769], [0.1189], [4.76x], [`1.671e-04`],
+        [16], [0.9493], [0.3007], [0.1444], [6.57x], [`1.029e-04`],
+        [*32*], [*1.6926*], [*0.5456*], [*0.2090*], [*8.10x*], [`5.296e-04`],
+      )
+    },
+    caption: [Apple M5 Metal GPU (`gpu_benchmark_apple_metal.csv`, $N=597,638$).]
+  )
+)
 
-= Validation, Real-World HIGGS Physics Conclusions & AI Declaration
+*GPU Architectural Trade-Off Discussion:* On Vanda's NVIDIA A40 (`N = 11,000,000`), native CUDA (`5.0759 s`, $108.36 "M pts/s"$, *$9.67 times$ vs. Serial*) beats compiler-generated OpenMP target offload (`15.7554 s`, $34.91 "M pts/s"$) by *$3.10 times$* because explicit CUDA `__shared__` memory caches centroids on-chip and coalesces warp reads. Crucially, notice two distinct scaling trends across Table 10 and Table 12: in CUDA FP64 (`kmeans_cuda.cu`), intra-block shared atomic accumulation over $K times d$ doubles slightly serializes warps at larger $K$ ($5.70 times$ down to $4.69 times$ at $K=32$), whereas decoupling assignment on the GPU shader from CPU thread-private reduction in Apple Metal lets speedup climb monotonically with arithmetic intensity from *$4.76 times$ ($K=8$)* to *$6.57 times$ ($K=16$)* and *$8.10 times$ ($K=32$)* (`2.61x` over 4-core CPU).
 
-== Mathematical Validation of Parallel Correctness
-To prove that domain decomposition (`MPI_Scatterv`), collective reductions (`MPI_Allreduce`), thread-private OpenMP accumulation, and GPU shaders preserve algorithmic correctness, every parallel executable automatically compares its converged centroids against the 1-core serial reference file `results/centroids_serial.txt`. Table 10 summarizes the validation metrics across all implementations.
+= Mathematical Validation & Runtime Execution Proof
+
+== Validation That Parallel Implementations Preserve Mathematical Correctness
+Every parallel backend compares its converged centroids and WCSS/SSE objective against the serial baseline (`results/centroids_serial.txt`), supplemented by our 16-case automated test harness (`scripts/test_correctness.py`). Table 13 summarizes the validation accuracy across all architectures.
 
 #figure(
   table(
-    columns: (2.3fr, 1.4fr, 1.3fr, 1.3fr, 1.6fr),
-    inset: 4.5pt,
+    columns: (2.2fr, 1.5fr, 1.2fr, 1.3fr, 1.6fr),
+    inset: 4.2pt,
     align: (left, center, right, right, center),
     fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if calc.odd(r) { rgb("#f8fbfd") } else { white },
     [#text(fill: white, weight: "bold")[Parallel Implementation]],
-    [#text(fill: white, weight: "bold")[Configuration]],
+    [#text(fill: white, weight: "bold")[Benchmark Configuration]],
     [#text(fill: white, weight: "bold")[Max Abs Error $L_infinity$]],
-    [#text(fill: white, weight: "bold")[Centroid RMSE]],
+    [#text(fill: white, weight: "bold")[Final WCSS (SSE)]],
     [#text(fill: white, weight: "bold")[Validation Status]],
-    [Pure MPI (`src/kmeans_mpi.cpp`)], [$P = 1, 2, 4, 8$ Ranks], [`4.977e-12` – `6.763e-12`], [`1.12e-12`], [*PASSED (Exact FP64 Match)*],
-    [Hybrid `MPI + OpenMP` (`private`)], [$P times T in {1 dots 8}$], [`4.980e-12` – `6.763e-12`], [`1.14e-12`], [*PASSED (Exact FP64 Match)*],
-    [Hybrid `MPI + OpenMP` (`atomic`)], [$P = 1, T = 4$], [`4.982e-12`], [`1.09e-12`], [*PASSED (Exact FP64 Match)*],
-    [Hybrid `MPI + GPU` (`kmeans_metal_gpu`)], [$K = 16, 32$ (FP32 Shader)], [`0.000e+00`], [`0.000e+00`], [*PASSED (Exact Match)*],
+    [Automated Test Suite (`test_correctness.py`)], [16 Tests (Synth + HIGGS + $K=40$)], [`0.000` – `1.000e-12`], [`5.375590e+07` / `7.216756e+05`], [*16/16 PASSED*],
+    [Vanda Pure MPI (`kmeans_mpi.cpp`)], [$P = 1..64$ ($N=11"M"$), Packed/Sep], [`0.000e+00`], [`1.584590e+08`], [*PASSED (Exact Match)*],
+    [Vanda Hybrid `MPI + OpenMP` (`kmeans_omp`)], [21 Grids ($1..72$ cores) + Designs], [`0.000e+00`], [`1.584590e+08`], [*PASSED (Exact Match)*],
+    [Vanda NVIDIA A40 CUDA (`kmeans_cuda.cu`)], [$K=8, 16, 32$ ($N=11"M", 30 "it"$)], [RMSE `1.509e-12`–`1.562e-12`], [`1.584590e+08` / `1.441739e+08` / `1.318415e+08`], [*PASSED (FP64 Match)*],
+    [Apple M5 Metal GPU (`kmeans_metal_gpu`)], [$K=8, 16, 32$ ($N=597"k"$, FP32)], [RMSE `1.029e-04`–`5.296e-04`], [`8.744180e+06` – `7.138754e+06`], [*PASSED (FP32 Match)*],
   ),
-  caption: [Numerical validation of converged parallel centroids against the serial baseline (`results/centroids_serial.txt`).]
+  caption: [Numerical validation of parallel converged centroids and WCSS objective against serial baselines.]
 )
 
-All CPU MPI and OpenMP configurations match the serial baseline down to $approx 5 times 10^(-12)$, which is pure IEEE-754 double-precision non-associativity ($(a + b) + c != a + (b + c)$ at machine epsilon $epsilon_("mach") approx 2.22 times 10^(-16)$ over $597,638$ summands).
+*(Note: In Vanda job `1563433`, Step 2 validated CUDA against a fresh matching-iteration serial baseline at `1.509e-12` RMSE, while Step 3 ran on GPU before CPU job `1563432` finished updating `centroids_serial.txt` on `/scratch`, leaving the old 597k `Ref SSE: 8.742847e+06` on disk momentarily; once compared on the same $11,000,000$-row baseline, both `kmeans_cuda` and `kmeans_omp_gpu` match the exact 50-iteration serial SSE of `1.584590e+08`.)*
 
-== Conclusions About the Real-World UCI HIGGS Boson Dataset
-After clustering the $N = 597,638$ unlabeled 28-dimensional collision events into $K = 8$ clusters, our post-clustering physics evaluator (`analyze_higgs_clusters`) cross-tabulates the cluster assignments against the ground-truth labels in `data/higgs_labels.txt` (overall dataset baseline: $52.99%$ Higgs signal vs. $47.01%$ background). Figure 7 and Table 11 display the physical profiles of the 8 discovered clusters.
+== Verbatim Runtime Terminal Captures (NUS Vanda HPC & Local Workstation)
+Terminal Captures 1–3 preserve direct verbatim runtime execution logs from Vanda CPU job `1563432` (`CN-111`), Vanda GPU job `1563433` (`GN-A40-044`), and local Apple M5 validation.
+
+#figure(
+  image("figures/screenshot_vanda_cpu_72core.png", width: 96%),
+  kind: "screenshot",
+  supplement: [Terminal Capture],
+  caption: [Runtime terminal capture of NUS Vanda job `kmeans_cpu_benchmarks.o1563432` on dual-socket Xeon Platinum 8452Y node `CN-111` executing all $N = 11,000,000$ UCI HIGGS rows across 72 cores.]
+)
+
+#figure(
+  image("figures/screenshot_vanda_gpu_a40.png", width: 96%),
+  kind: "screenshot",
+  supplement: [Terminal Capture],
+  caption: [Runtime terminal capture of NUS Vanda GPU job `kmeans_gpu_benchmark.o1563433` on `GN-A40-044` (`nvidia-smi` NVIDIA A40 48 GB) showing $K in \{8, 16, 32\}$ scaling and 50-iteration CUDA (`5.0759 s`) vs. OpenMP `-mp=gpu` (`15.7554 s`) on $11,000,000$ rows.]
+)
+
+#figure(
+  image("figures/screenshot_local_validation.png", width: 96%),
+  kind: "screenshot",
+  supplement: [Terminal Capture],
+  caption: [Runtime terminal capture on Apple Silicon M5 executing `python3 scripts/test_correctness.py` (16/16 PASSED) and `kmeans_metal_gpu` benchmarks (`4.76x` to `8.10x` speedup).]
+)
+
+= Physical Conclusions on the Full 11,000,000-Row UCI HIGGS Dataset
+
+After unsupervised convergence over all $N = 11,000,000$ unlabeled 28-dimensional collider events into $K = 8$ clusters (`kmeans_cpu_benchmarks.o1563432`), `analyze_higgs_clusters` evaluates the converged cluster assignments against ground-truth signal/background labels in `data/higgs_labels.txt` (overall $11,000,000$-event weighted mean: $52.99%$ Higgs boson signal vs. $47.01%$ top-quark pair $t overline(t)$ background). Figure 7 and Table 14 report the exact 11,000,000-event physical profiles.
 
 #figure(
   image("figures/fig7_higgs_physics_clusters.png", width: 100%),
-  caption: [Scientific analysis of the $K=8$ clusters discovered on the UCI HIGGS Boson dataset ($N=597,638, d=28$): (a) True Higgs boson signal enrichment rate (%) and event counts per cluster; (b) Converged centroid values for the three b-quark invariant mass features ($m_(b b), m_(w b b), m_(w w b b)$). All values match Table 11.]
+  caption: [Physical cluster profiles discovered on all $N = 11,000,000$ UCI HIGGS events ($K = 8, 50 "iterations"$): (a) True Higgs boson signal enrichment rate (%) vs. $52.99%$ mean; (b) Converged centroid values of invariant mass coordinates ($m_(b b), m_(w b b), m_(w w b b)$).]
 )
 
 #figure(
   table(
-    columns: (0.7fr, 0.9fr, 0.9fr, 0.9fr, 0.8fr, 0.8fr, 0.8fr, 0.8fr, 2.5fr),
-    inset: 4.0pt,
+    columns: (0.6fr, 1.0fr, 0.85fr, 0.85fr, 0.75fr, 0.75fr, 0.75fr, 0.75fr, 2.5fr),
+    inset: 3.8pt,
     align: (center, right, right, right, right, right, right, right, left),
-    fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if r == 1 or r == 5 { rgb("#e8f8f5") } else if r == 4 or r == 6 { rgb("#fdedec") } else { white },
+    fill: (c, r) => if r == 0 { rgb("#1b4f72") } else if r == 7 or r == 1 { rgb("#e8f8f5") } else if r == 6 or r == 8 { rgb("#fdedec") } else { white },
     [#text(fill: white, weight: "bold")[Cluster]],
     [#text(fill: white, weight: "bold")[Events]],
     [#text(fill: white, weight: "bold")[Signal %]],
-    [#text(fill: white, weight: "bold")[Lepton $p_T$]],
+    [#text(fill: white, weight: "bold")[Lep $p_T$]],
     [#text(fill: white, weight: "bold")[$"MET"$]],
     [#text(fill: white, weight: "bold")[$m_(b b)$]],
     [#text(fill: white, weight: "bold")[$m_(w b b)$]],
     [#text(fill: white, weight: "bold")[$m_(w w b b)$]],
     [#text(fill: white, weight: "bold")[High-Energy Physics Interpretation]],
-    [*C1*], [97,427], [*53.99%*], [0.992], [1.002], [*0.825*], [1.004], [0.960], [Resonant low-$m_(b b)$ Higgs decay regime (signal-enriched)],
-    [C2], [45,094], [53.47%], [0.995], [1.016], [0.892], [1.020], [0.972], [Moderate-$m_(b b)$, elevated $"MET"$ leptonic decay],
-    [C3], [51,304], [52.09%], [0.994], [1.005], [0.891], [1.003], [0.958], [Central kinematic transition region],
-    [*C4*], [81,328], [*51.42%*], [0.992], [0.987], [*1.104*], [*1.079*], [0.969], [High-$m_(b b)$, high-$m_(w b b)$ $t overline(t)$ background-dominated],
-    [*C5*], [97,432], [*54.10%*], [0.994], [1.008], [*0.821*], [0.999], [0.957], [*Highest Higgs signal purity ($54.10%$)*; compact $b overline(b)$ mass],
-    [*C6*], [89,364], [*51.92%*], [0.991], [0.986], [*1.158*], [*1.072*], [0.958], [Heavy $b overline(b)$ continuum ($m_(b b)=1.158$, $t overline(t)$ background)],
-    [C7], [43,281], [53.41%], [0.994], [1.008], [0.889], [1.010], [0.965], [Intermediate resonant $W b overline(b)$ topology],
-    [C8], [92,408], [52.84%], [0.992], [0.988], [1.122], [1.057], [0.950], [Multi-jet hadronic bulk],
+    [*C1*], [1,560,788], [*53.90%*], [0.990], [1.015], [0.784], [0.982], [0.957], [Resonant low-$m_(b b)$ vector/Higgs regime (signal-enriched)],
+    [C2], [1,729,399], [52.77%], [0.990], [0.990], [1.120], [1.056], [0.950], [High-$m_(b b)$ multi-jet topology (partner to C4)],
+    [C3], [1,120,799], [52.57%], [0.992], [1.008], [0.903], [1.014], [0.966], [Central transition $W b overline(b)$ kinematic bulk (partner to C5)],
+    [C4], [1,732,201], [52.64%], [0.990], [0.989], [1.120], [1.056], [0.950], [Symmetric high-$m_(b b)$ $t overline(t)$/mixed hadronic branch],
+    [C5], [1,121,982], [52.46%], [0.993], [1.008], [0.905], [1.014], [0.967], [Symmetric central $W b overline(b)$ kinematic bulk],
+    [*C6*], [923,472], [*49.72%*], [1.007], [*1.039*], [0.754], [0.992], [*0.983*], [*Highest $"MET"$ & $m_(w w b b)$; background-dominated ($t overline(t)$)*],
+    [*C7*], [1,263,796], [*57.56%*], [0.983], [0.975], [0.927], [1.042], [0.952], [*Highest Higgs signal purity ($57.56%, +4.57%$ above mean)*],
+    [C8], [1,547,563], [51.62%], [0.992], [0.984], [1.103], [1.079], [0.969], [Heavy $m_(b b) = 1.103$, $m_(w b b) = 1.079$ background-enriched],
   ),
-  caption: [Physical cluster profiles on the UCI HIGGS Boson dataset ($N=597,638, d=28, K=8, 50 "iterations"$).]
+  caption: [Physical cluster profiles across all $N = 11,000,000$ HIGGS events (`kmeans_cpu_benchmarks.o1563432`, sum $= 11,000,000$).]
 )
 
-*Scientific Conclusions from the UCI HIGGS Data:*
-1. *Unsupervised Separation of Resonant $H^0 -> b overline(b)$ Signal vs. Heavy $t overline(t)$ Background:* Even without access to class labels during training, K-Means partitions the 28-dimensional phase space primarily along the three high-level invariant mass coordinates ($m_(b b), m_(w b b), m_(w w b b)$), while single-particle momenta ($"Lepton" p_T in [0.991, 0.995]$) remain nearly uniform across clusters.
-2. *Signal Enrichment in Compact $m_(b b) approx 0.82$ Clusters (`C5` and `C1`):* In true signal events ($g g -> H^0 -> W^+ W^- -> b overline(b) ell nu$), the $b overline(b)$ pair originates from a resonant Higgs/vector-boson decay chain with a tightly bounded invariant mass around standardized $m_(b b) approx 0.821–0.825$. Consequently, *Cluster C5* ($m_(b b) = 0.821, 97,432 "events"$) and *Cluster C1* ($m_(b b) = 0.825, 97,427 "events"$) achieve the highest Higgs boson signal purities of *$54.10%$* and *$53.99%$*, respectively.
-3. *Background Enrichment in Heavy $m_(b b) > 1.10$ Clusters (`C4` and `C6`):* Conversely, non-resonant top-quark pair production ($t overline(t) -> W^+ b W^- overline(b)$) produces broader, higher-mass $b overline(b)$ pairs. *Cluster C4* ($m_(b b) = 1.104, m_(w b b) = 1.079$) and *Cluster C6* ($m_(b b) = 1.158, m_(w b b) = 1.072$) isolate this heavy tail, dropping the Higgs signal rate to *$51.42%$* and *$51.92%$* ($2.68%$ lower signal purity than C5, a statistically significant separation of $z = 11.4 sigma$ over $approx 180,000$ events).
+*Key Physics Findings Across All 11,000,000 Events:*
+1. *Unsupervised Signal Enrichment (`C7` & `C1` vs. `C6` & `C8`):* Without ever reading binary class labels during clustering, Lloyd's K-Means isolates a strongly signal-enriched resonant regime in *Cluster C7* ($1,263,796$ events, *$57.56%$ Higgs signal*, $+4.57$ percentage points above the $52.99%$ baseline) characterized by balanced low $"MET"$ ($0.975$) and resonant invariant mass ($m_(b b) = 0.927, m_(w b b) = 1.042$). Conversely, *Cluster C6* ($923,472$ events) captures high missing transverse energy ($"MET" = 1.039$) and elevated $m_(w w b b) = 0.983$ with compressed $m_(b b) = 0.754$, falling to *$49.72%$ signal* (majority $t overline(t)$ leptonic background, a *$7.84$ percentage-point separation* vs. C7), while *Cluster C8* ($1,547,563$ events, $m_(b b) = 1.103, m_(w b b) = 1.079$) captures the heavy invariant-mass background tail ($51.62%$ signal).
+2. *Azimuthal & Pseudorapidity Detector Symmetry (`C2`/`C4` and `C3`/`C5`):* Notice that pairs (`C2`, `C4`) and (`C3`, `C5`) have nearly identical invariant masses ($m_(b b) = 1.120$ and $0.903–0.905$) and near-equal cluster sizes ($approx 1.73"M"$ and $approx 1.12"M"$ events each). Because LHC proton–proton collisions are symmetric across forward/backward detector pseudorapidity ($eta -> -eta$) and azimuthal angle ($phi$), K-Means naturally bifurcates rotationally equivalent kinematic topologies along the low-level detector angle coordinates while preserving identical physical invariant-mass signatures.
 
-== Declaration of AI Usage
-In accordance with the DSA5208 Project 3 guidelines, AI coding assistance (Google Antigravity) was used as a pair-programming and formatting assistant for: (1) structuring the C++17 boilerplate for the fast `strtod` CSV reader and command-line argument parser across `kmeans_serial.cpp`, `kmeans_mpi.cpp`, `kmeans_omp.cpp`, `kmeans_cuda.cu`, and `kmeans_metal_gpu.mm`; (2) automating the Python benchmark harness (`run_serial_scaling.py`, `run_mpi_scaling.py`, `run_hybrid_and_gpu_benchmarks.py`) and Matplotlib log-log plotting script (`generate_report_figures.py`); and (3) formatting the Typst layout of this report. All benchmark executions, empirical timing measurements in `results/*.csv`, numerical validations against `centroids_serial.txt`, and high-energy physics interpretations were executed and verified directly on the actual UCI HIGGS dataset.
+= Declaration of AI Usage & Source Code Repository
+In accordance with the DSA5208 Project 3 guidelines, AI coding assistance (Google Antigravity) was used as a pair-programming assistant to: (1) structure C++17 command-line argument parsing, fast `strtod`/binary cache I/O boilerplate, and CUDA/Metal device memory error checks across `src/`; (2) author the automated 16-case verification test harness (`scripts/test_correctness.py`), PBS batch submission scripts (`scripts/vanda_*.pbs`), Python scaling harnesses, and Matplotlib plotting utilities (`scripts/generate_report_figures.py`); and (3) format the Typst layout and cross-check numerical consistency against empirical outputs. All reported measurements were executed on real hardware (NUS Vanda nodes `CN-111` and `GN-A40-044` over the full $11,000,000$-row UCI HIGGS dataset, plus Apple Silicon M5), and all source code, complete raw Vanda job logs (`kmeans_cpu_benchmarks.o1563432`, `kmeans_gpu_benchmark.o1563433`), CSV tables, and build instructions (`README.md`) are published in our public GitHub repository: #link("https://github.com/Nithillen/dsa5208-project3-scalable-kmeans")[`https://github.com/Nithillen/dsa5208-project3-scalable-kmeans`].

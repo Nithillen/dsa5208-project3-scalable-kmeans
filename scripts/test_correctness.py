@@ -88,13 +88,20 @@ def main():
         ("Hybrid MPI+OpenMP (P=2, T=2, atomic)", ["mpirun", "-np", "2", "./bin/kmeans_omp", "-n", "20000", "-d", "28", "-k", "8", "-m", "30", "-t", "1e-5", "-threads", "2", "-a", "atomic"], 1e-9, 1e-11),
     ]
 
+    def has_cuda_gpu():
+        try:
+            res = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True, timeout=5)
+            return res.returncode == 0 and "GPU" in res.stdout
+        except Exception:
+            return False
+
     if os.path.exists(os.path.join(BASE_DIR, "bin", "kmeans_metal_gpu")):
         syn_cases.append(
-            ("Hybrid MPI+Metal GPU (P=2, T=2)", ["mpirun", "-np", "2", "./bin/kmeans_metal_gpu", "-s", "-n", "20000", "-d", "28", "-k", "8", "-m", "30", "-t", "1e-5", "-threads", "2"], 1e-3, 1e-5)
+            ("Hybrid MPI+Metal GPU (P=2, T=2)", ["mpirun", "--bind-to", "none", "-np", "2", "./bin/kmeans_metal_gpu", "-s", "-n", "20000", "-d", "28", "-k", "8", "-m", "30", "-t", "1e-5", "-threads", "2"], 1e-3, 1e-5)
         )
-    if os.path.exists(os.path.join(BASE_DIR, "bin", "kmeans_cuda")):
+    if os.path.exists(os.path.join(BASE_DIR, "bin", "kmeans_cuda")) and has_cuda_gpu():
         syn_cases.append(
-            ("Hybrid MPI+CUDA GPU (P=1)", ["mpirun", "-np", "1", "./bin/kmeans_cuda", "-s", "-n", "20000", "-d", "28", "-k", "8", "-m", "30", "-t", "1e-5"], 1e-7, 1e-9)
+            ("Hybrid MPI+CUDA GPU (P=1)", ["mpirun", "--bind-to", "none", "-np", "1", "./bin/kmeans_cuda", "-s", "-n", "20000", "-d", "28", "-k", "8", "-m", "30", "-t", "1e-5"], 1e-7, 1e-9)
         )
 
     for idx, (label, cmd, tol_c, tol_s) in enumerate(syn_cases):
