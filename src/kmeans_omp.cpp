@@ -13,7 +13,7 @@ struct Config {
     std::string accum_mode = "private";   // "private" (thread-local padded) vs "atomic"
     std::string allreduce_mode = "separate"; // "separate" or "packed"
     std::string io_mode = "scatter";         // "scatter" or "parallel"
-    size_t N = 597638;
+    size_t N = 11000000;
     size_t d = 28;
     size_t K = 8;
     size_t max_iters = 50;

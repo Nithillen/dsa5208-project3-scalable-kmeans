@@ -2,13 +2,14 @@
 #PBS -P personal-nithillen.jayaseelan
 #PBS -j oe
 #PBS -N kmeans_gpu_benchmark
-#PBS -l walltime=00:30:00
-#PBS -l select=1:ncpus=36:mpiprocs=1:ompthreads=36:ngpus=1
+#PBS -l walltime=00:45:00
+#PBS -l select=1:ncpus=36:mpiprocs=1:ompthreads=36:ngpus=1:mem=240gb
 
 cd $PBS_O_WORKDIR || exit 1
+export PYTHONUNBUFFERED=1
 
 echo "=================================================================="
-echo "  DSA5208 Project 3: Vanda NVIDIA GPU Benchmark                   "
+echo "  DSA5208 Project 3: Vanda NVIDIA GPU Benchmark (11M Rows)        "
 echo "  Host Node : $(hostname)                                         "
 echo "  Date      : $(date)                                             "
 echo "=================================================================="
@@ -17,26 +18,36 @@ nvidia-smi
 # Load CUDA & NVHPC modules
 module load nvhpc-hpcx-cuda12/26.1 2>/dev/null || module load cuda 2>/dev/null || true
 
-mkdir -p bin results
+mkdir -p bin results data
 
-# Compile CUDA and Hybrid OpenMP GPU Target executables
-echo "[Step 1] Compiling CUDA and OpenMP GPU targets..."
-nvcc -O3 -std=c++17 -arch=native -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda 2>/dev/null || \
-nvcc -O3 -std=c++17 -gencode arch=compute_80,code=sm_80 -gencode arch=compute_86,code=sm_86 -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda 2>/dev/null || \
-nvcc -O3 -std=c++17 -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda
+# Ensure full 11,000,000-row UCI HIGGS dataset is prepared
+if [ ! -f data/higgs_clean.csv ] || [ "$(wc -l < data/higgs_clean.csv)" -lt 11000000 ]; then
+    echo "[Step 0] Extracting full 11,000,000-row UCI HIGGS dataset..."
+    python3 scripts/prepare_higgs_data.py --all --force
+fi
+
+# Compile CPU baselines + CUDA + OpenMP GPU Target executables
+echo "[Step 1] Compiling Serial, OpenMP, CUDA, and OpenMP GPU targets..."
+g++ -O3 -std=c++17 src/kmeans_serial.cpp -o bin/kmeans_serial
+mpicxx -O3 -std=c++17 -fopenmp src/kmeans_omp.cpp -o bin/kmeans_omp
+nvcc -O3 -std=c++17 -arch=sm_86 -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda || \
+nvcc -O3 -std=c++17 -gencode arch=compute_80,code=sm_80 -gencode arch=compute_86,code=sm_86 -ccbin mpicxx src/kmeans_cuda.cu -o bin/kmeans_cuda
 nvc++ -O3 -std=c++17 -mp=gpu -I$(dirname $(which mpicxx))/../include -L$(dirname $(which mpicxx))/../lib -lmpi src/kmeans_omp.cpp -o bin/kmeans_omp_gpu 2>/dev/null || true
 
-# Run CUDA GPU Benchmark on full HIGGS dataset across K={8, 16, 32}
-echo "[Step 2] Running CUDA GPU K-Means Benchmark..."
-for K in 8 16 32; do
-    echo "--- Running CUDA GPU with K=$K ---"
-    mpirun --bind-to none -np 1 ./bin/kmeans_cuda -f data/higgs_clean.csv -r results/centroids_serial.txt -k $K -m 50 -t 0.0
-done
+# Ensure 50-iter serial reference centroids exist
+if [ ! -f results/centroids_serial.txt ]; then
+    ./bin/kmeans_serial -f data/higgs_clean.csv -l data/higgs_labels.txt -k 8 -m 50 -t 0.0 -o results/centroids_serial.txt
+fi
 
-# Run OpenMP GPU Target Offload if compiled
+# Step 2: Benchmark NVIDIA CUDA GPU vs 1-Core CPU & 4-Core OpenMP across K={8, 16, 32} on 11M rows
+echo "[Step 2] Running NVIDIA CUDA GPU vs CPU Baseline Scaling (K=8, 16, 32 on 11M rows)..."
+python3 scripts/run_hybrid_and_gpu_benchmarks.py --gpu-only
+
+# Step 3: 50-Iteration Validation Run on CUDA and OpenMP GPU Target Offload
+echo "[Step 3] Running 50-Iteration Validation (CUDA + OpenMP -mp=gpu)..."
+mpirun --bind-to none -np 1 ./bin/kmeans_cuda -f data/higgs_clean.csv -r results/centroids_serial.txt -k 8 -m 50 -t 0.0
 if [ -f bin/kmeans_omp_gpu ]; then
-    echo "[Step 3] Running OpenMP GPU Target Offload (-mp=gpu)..."
-    mpirun --bind-to none -np 1 ./bin/kmeans_omp_gpu -f data/higgs_clean.csv -r results/centroids_serial.txt -g -k 8 -m 50 -t 0.0
+    mpirun --bind-to none -np 1 ./bin/kmeans_omp_gpu -f data/higgs_clean.csv -r results/centroids_serial.txt -o results/centroids_omp_gpu.txt -g -k 8 -m 50 -t 0.0
 fi
 
 echo "=================================================================="

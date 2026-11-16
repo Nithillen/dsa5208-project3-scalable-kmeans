@@ -7,7 +7,7 @@ struct Config {
     std::string output_file = "results/centroids_mpi.txt";
     std::string allreduce_mode = "separate"; // "separate" or "packed" (single combined MPI_Allreduce)
     std::string io_mode = "scatter";         // "scatter" (Rank 0 load + Scatterv) or "parallel" (chunked rank reader)
-    size_t N = 597638;       // Default total points (or points per rank if weak_scaling=true)
+    size_t N = 11000000;     // Default total points (or points per rank if weak_scaling=true)
     size_t d = 28;           // Dimensions (28 for UCI HIGGS)
     size_t K = 8;            // Number of clusters
     size_t max_iters = 50;   // Maximum iterations

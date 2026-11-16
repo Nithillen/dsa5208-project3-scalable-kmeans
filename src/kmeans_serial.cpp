@@ -5,7 +5,7 @@ struct Config {
     std::string input_file = "";
     std::string label_file = "data/higgs_labels.txt";
     std::string output_file = "results/centroids_serial.txt";
-    size_t N = 597638;       // Default points
+    size_t N = 11000000;     // Default points (full UCI HIGGS dataset)
     size_t d = 28;           // Default dimensions (28 for HIGGS)
     size_t K = 8;            // Number of clusters
     size_t max_iters = 50;   // Maximum iterations
@@ -120,6 +120,7 @@ int main(int argc, char* argv[]) {
 
     auto t_start = std::chrono::high_resolution_clock::now();
     size_t iter = 0;
+    size_t first_converged_iter = 0;
     double max_movement = 0.0;
     double iter_sse = 0.0;
 
@@ -180,6 +181,9 @@ int main(int argc, char* argv[]) {
                   << " | SSE: " << std::scientific << std::setprecision(6) << iter_sse
                   << " | Time: " << std::fixed << std::setprecision(2) << iter_ms << " ms\n";
 
+        if (first_converged_iter == 0 && max_movement < 1e-5) {
+            first_converged_iter = iter + 1;
+        }
         if (max_movement < cfg.tolerance) {
             std::cout << "Converged after " << (iter + 1) << " iterations!\n";
             iter++;
@@ -194,7 +198,7 @@ int main(int argc, char* argv[]) {
     double final_sse = compute_local_sse(data, centroids, cfg.N, cfg.d, cfg.K);
 
     std::cout << "\n================ Benchmark Summary ================\n"
-              << "Total Iterations : " << iter << "\n"
+              << "Total Iterations : " << iter << (first_converged_iter > 0 ? " (crossed tol=1e-5 at iter " + std::to_string(first_converged_iter) + ")" : "") << "\n"
               << "Total Time       : " << std::fixed << std::setprecision(4) << total_sec << " seconds\n"
               << "Avg Time/Iter    : " << std::fixed << std::setprecision(2) << (total_sec * 1000.0 / iter) << " ms\n"
               << "Throughput       : " << std::fixed << std::setprecision(2) << ((cfg.N * iter) / (total_sec * 1e6)) << " M points/sec\n"

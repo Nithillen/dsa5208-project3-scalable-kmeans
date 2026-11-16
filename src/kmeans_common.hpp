@@ -13,6 +13,23 @@
 #include <cstdlib>
 #include <cstdint>
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
+
+struct BinaryCacheHeader {
+    uint64_t magic;
+    uint64_t csv_size;
+    uint64_t N;
+    uint64_t d;
+};
+constexpr uint64_t KMEANS_BIN_MAGIC = 0x4B4D45414E534231ULL; // "KMEANSB1"
+
+inline uint64_t get_file_byte_size(const std::string& filename) {
+    std::ifstream in(filename, std::ios::in | std::ios::binary | std::ios::ate);
+    if (!in.is_open()) return 0;
+    std::streampos pos = in.tellg();
+    return (pos > 0) ? static_cast<uint64_t>(pos) : 0;
+}
 
 // Fast deterministic counter-based SplitMix64 PRNG so any rank can generate
 // global point `global_idx` identically to Serial (independent of MPI rank count P!)
@@ -95,9 +112,36 @@ inline void initialize_centroids(const std::vector<double>& data, std::vector<do
     }
 }
 
-// High-speed CSV loader using strtod pointer scanning for multi-million row files (up to 11M HIGGS rows)
+// High-speed CSV loader using strtod pointer scanning with transparent binary cache (<filename>.bin)
 inline bool load_csv_data(const std::string& filename, std::vector<double>& data,
                           size_t& N, size_t& d, size_t max_rows = 0) {
+    uint64_t csv_size = get_file_byte_size(filename);
+    if (csv_size == 0) {
+        std::cerr << "Error: Could not open file " << filename << std::endl;
+        return false;
+    }
+
+    const std::string bin_path = filename + ".bin";
+    {
+        std::ifstream bin_in(bin_path, std::ios::in | std::ios::binary);
+        if (bin_in.is_open()) {
+            BinaryCacheHeader hdr{};
+            bin_in.read(reinterpret_cast<char*>(&hdr), sizeof(hdr));
+            if (bin_in.good() && hdr.magic == KMEANS_BIN_MAGIC && hdr.csv_size == csv_size &&
+                hdr.N > 0 && hdr.d > 0 && (max_rows == 0 || hdr.N >= max_rows)) {
+                size_t target_N = (max_rows > 0) ? max_rows : static_cast<size_t>(hdr.N);
+                d = static_cast<size_t>(hdr.d);
+                N = target_N;
+                data.resize(N * d);
+                bin_in.read(reinterpret_cast<char*>(data.data()),
+                            static_cast<std::streamsize>(N * d * sizeof(double)));
+                if (bin_in.good()) {
+                    return true;
+                }
+            }
+        }
+    }
+
     std::ifstream file(filename, std::ios::in | std::ios::binary);
     if (!file.is_open()) {
         std::cerr << "Error: Could not open file " << filename << std::endl;
@@ -152,6 +196,25 @@ inline bool load_csv_data(const std::string& filename, std::vector<double>& data
             if (max_rows > 0 && N >= max_rows) break;
         }
     }
+
+    if (N > 0 && d > 0 && max_rows == 0) {
+        auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+        const std::string tmp_path = bin_path + ".tmp." + std::to_string(stamp);
+        std::ofstream bin_out(tmp_path, std::ios::out | std::ios::binary);
+        if (bin_out.is_open()) {
+            BinaryCacheHeader hdr{KMEANS_BIN_MAGIC, csv_size, static_cast<uint64_t>(N), static_cast<uint64_t>(d)};
+            bin_out.write(reinterpret_cast<const char*>(&hdr), sizeof(hdr));
+            bin_out.write(reinterpret_cast<const char*>(data.data()),
+                          static_cast<std::streamsize>(N * d * sizeof(double)));
+            bin_out.close();
+            if (bin_out.good()) {
+                std::rename(tmp_path.c_str(), bin_path.c_str());
+            } else {
+                std::remove(tmp_path.c_str());
+            }
+        }
+    }
+
     return (N > 0 && d > 0);
 }
 
@@ -159,6 +222,52 @@ inline bool load_csv_data(const std::string& filename, std::vector<double>& data
 inline bool load_csv_partition(const std::string& filename, std::vector<double>& local_data,
                                std::vector<double>& centroids, size_t& total_N, size_t& local_N,
                                size_t& d, size_t K, int rank, int num_procs, size_t max_rows = 0) {
+    uint64_t csv_size = get_file_byte_size(filename);
+    if (csv_size == 0) return false;
+
+    const std::string bin_path = filename + ".bin";
+    {
+        std::ifstream bin_in(bin_path, std::ios::in | std::ios::binary);
+        if (bin_in.is_open()) {
+            BinaryCacheHeader hdr{};
+            bin_in.read(reinterpret_cast<char*>(&hdr), sizeof(hdr));
+            if (bin_in.good() && hdr.magic == KMEANS_BIN_MAGIC && hdr.csv_size == csv_size &&
+                hdr.N > 0 && hdr.d > 0 && (max_rows == 0 || hdr.N >= max_rows)) {
+                total_N = (max_rows > 0) ? max_rows : static_cast<size_t>(hdr.N);
+                d = static_cast<size_t>(hdr.d);
+
+                size_t base_rows = total_N / static_cast<size_t>(num_procs);
+                size_t rem_rows  = total_N % static_cast<size_t>(num_procs);
+                size_t row_start = 0;
+                for (int p = 0; p < rank; ++p) {
+                    row_start += base_rows + (static_cast<size_t>(p) < rem_rows ? 1 : 0);
+                }
+                local_N = base_rows + (static_cast<size_t>(rank) < rem_rows ? 1 : 0);
+
+                local_data.resize(local_N * d);
+                std::streamoff data_offset = static_cast<std::streamoff>(sizeof(BinaryCacheHeader)) +
+                                             static_cast<std::streamoff>(row_start * d * sizeof(double));
+                bin_in.seekg(data_offset, std::ios::beg);
+                bin_in.read(reinterpret_cast<char*>(local_data.data()),
+                            static_cast<std::streamsize>(local_N * d * sizeof(double)));
+
+                centroids.assign(K * d, 0.0);
+                size_t step = total_N / K;
+                for (size_t k = 0; k < K; ++k) {
+                    size_t idx = k * step;
+                    std::streamoff c_offset = static_cast<std::streamoff>(sizeof(BinaryCacheHeader)) +
+                                              static_cast<std::streamoff>(idx * d * sizeof(double));
+                    bin_in.seekg(c_offset, std::ios::beg);
+                    bin_in.read(reinterpret_cast<char*>(&centroids[k * d]),
+                                static_cast<std::streamsize>(d * sizeof(double)));
+                }
+                if (bin_in.good()) {
+                    return true;
+                }
+            }
+        }
+    }
+
     // Pass 1: Count total valid rows and dimension d
     std::ifstream file(filename, std::ios::in | std::ios::binary);
     if (!file.is_open()) return false;

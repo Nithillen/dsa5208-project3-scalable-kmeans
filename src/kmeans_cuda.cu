@@ -23,9 +23,11 @@
         }                                                                      \
     } while (0)
 
-// Portable atomicAdd for double on older CUDA architectures (< sm_60)
-#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ < 600
-static __inline__ __device__ double atomicAdd(double* address, double val) {
+// Portable double atomicAdd wrapper: native hardware instruction on sm_60+ (A40/V100/A100), CAS fallback on older GPUs
+__device__ __inline__ double atomicAddDouble(double* address, double val) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 600
+    return atomicAdd(address, val);
+#else
     unsigned long long int* address_as_ull = (unsigned long long int*)address;
     unsigned long long int old = *address_as_ull, assumed;
     do {
@@ -34,8 +36,8 @@ static __inline__ __device__ double atomicAdd(double* address, double val) {
                         __double_as_longlong(val + __longlong_as_double(assumed)));
     } while (assumed != old);
     return __longlong_as_double(old);
-}
 #endif
+}
 
 // CUDA kernel using shared-memory cached centroids and block-level partial reduction (including SSE)
 __global__ void kmeans_assign_accumulate_kernel(const double* __restrict__ d_data,
@@ -92,30 +94,30 @@ __global__ void kmeans_assign_accumulate_kernel(const double* __restrict__ d_dat
             }
         }
 
-        atomicAdd(&s_block_sse, best_dist);
+        atomicAddDouble(&s_block_sse, best_dist);
 
         if (use_shared_mem) {
             atomicAdd(&s_counts[best_k], 1ULL);
             for (size_t j = 0; j < d; ++j) {
-                atomicAdd(&s_sums[best_k * d + j], pt[j]);
+                atomicAddDouble(&s_sums[best_k * d + j], pt[j]);
             }
         } else {
             atomicAdd(&d_counts[best_k], 1ULL);
             for (size_t j = 0; j < d; ++j) {
-                atomicAdd(&d_sums[best_k * d + j], pt[j]);
+                atomicAddDouble(&d_sums[best_k * d + j], pt[j]);
             }
         }
     }
     __syncthreads();
 
     if (tid == 0 && s_block_sse > 0.0) {
-        atomicAdd(d_sse, s_block_sse);
+        atomicAddDouble(d_sse, s_block_sse);
     }
 
     if (use_shared_mem) {
         for (size_t i = tid; i < K * d; i += blockDim.x) {
             if (s_sums[i] != 0.0) {
-                atomicAdd(&d_sums[i], s_sums[i]);
+                atomicAddDouble(&d_sums[i], s_sums[i]);
             }
         }
         for (size_t k = tid; k < K; k += blockDim.x) {
@@ -135,7 +137,7 @@ int main(int argc, char* argv[]) {
     std::string input_file  = "data/higgs_clean.csv";
     std::string ref_file    = "results/centroids_serial.txt";
     std::string output_file = "results/centroids_cuda.txt";
-    size_t N = 597638, d = 28, K = 8, max_iters = 50;
+    size_t N = 11000000, d = 28, K = 8, max_iters = 50;
     size_t max_rows_override = 0;
     double tolerance = 1e-5;
     unsigned int seed = 42;
@@ -159,9 +161,13 @@ int main(int argc, char* argv[]) {
     int num_devices = 0;
     CUDA_CHECK(cudaGetDeviceCount(&num_devices));
     int dev_id = 0;
+    std::string gpu_name = "NVIDIA CUDA GPU";
     if (num_devices > 0) {
         dev_id = rank % num_devices;
         CUDA_CHECK(cudaSetDevice(dev_id));
+        cudaDeviceProp prop{};
+        CUDA_CHECK(cudaGetDeviceProperties(&prop, dev_id));
+        gpu_name = prop.name;
     }
 
     std::vector<double> full_data, local_data, centroids;
@@ -289,6 +295,8 @@ int main(int argc, char* argv[]) {
 
     if (rank == 0) {
         std::cout << "\n================ Hybrid MPI+CUDA Summary ================\n"
+                  << "GPU Hardware     : " << gpu_name << "\n"
+                  << "Total Points (N) : " << N << "\n"
                   << "MPI Ranks (GPUs) : " << num_procs << "\n"
                   << "Shared Mem Cache : " << (use_shared_mem ? "ENABLED" : "FALLBACK (Global Mem)") << "\n"
                   << "Total Iterations : " << iter << "\n"

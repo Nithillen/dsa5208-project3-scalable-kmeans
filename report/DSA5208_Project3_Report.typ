@@ -50,7 +50,7 @@
     ]
     #v(0.25em)
     #text(size: 9.2pt, fill: rgb("#333333"))[
-      *Author:* Nithillen | *Date:* November 2026 | *Repository:* #link("https://github.com/Nithillen/dsa5208-project3-scalable-kmeans")[`github.com/Nithillen/dsa5208-project3-scalable-kmeans`]
+      *Author:* Nithillen Jayaseelan (Student ID: A0351473E) | *Date:* November 2026 | *Repository:* #link("https://github.com/Nithillen/dsa5208-project3-scalable-kmeans")[`github.com/Nithillen/dsa5208-project3-scalable-kmeans`]
     ]
   ]
 ]

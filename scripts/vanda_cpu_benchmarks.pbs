@@ -2,13 +2,14 @@
 #PBS -P personal-nithillen.jayaseelan
 #PBS -j oe
 #PBS -N kmeans_cpu_benchmarks
-#PBS -l walltime=00:45:00
+#PBS -l walltime=01:30:00
 #PBS -l select=1:ncpus=72:mpiprocs=72:ompthreads=1:mem=240gb
 
 cd $PBS_O_WORKDIR || exit 1
+export PYTHONUNBUFFERED=1
 
 echo "=================================================================="
-echo "  DSA5208 Project 3: Vanda 72-Core CPU Benchmark Suite            "
+echo "  DSA5208 Project 3: Vanda 72-Core CPU Benchmark Suite (11M Rows) "
 echo "  Host Node : $(hostname)                                         "
 echo "  Date      : $(date)                                             "
 echo "=================================================================="
@@ -18,6 +19,13 @@ lscpu | grep -E "Model name|Socket|Thread|NUMA|CPU\(s\):" || true
 module load nvhpc-hpcx-cuda12/26.1 2>/dev/null || module load OpenMPI 2>/dev/null || true
 
 mkdir -p bin results data
+
+# Ensure full 11,000,000-row UCI HIGGS dataset is prepared
+if [ ! -f data/higgs_clean.csv ] || [ "$(wc -l < data/higgs_clean.csv)" -lt 11000000 ]; then
+    echo "[Step 0] Extracting full 11,000,000-row UCI HIGGS dataset..."
+    python3 scripts/prepare_higgs_data.py --all --force
+fi
+wc -l data/higgs_clean.csv data/higgs_labels.txt
 
 # 1. Compile CPU executables on Vanda compute node
 echo "[Step 1] Compiling Serial, MPI, Standalone OpenMP, and Hybrid MPI+OpenMP..."
@@ -30,17 +38,17 @@ g++ -O3 -std=c++17 -fopenmp -DSTANDALONE_OMP src/kmeans_omp.cpp -o bin/kmeans_om
 echo "[Step 2] Running automated correctness & SSE validation test suite..."
 python3 scripts/test_correctness.py
 
-# 3. Run Serial Baseline & Complexity Scaling on HIGGS
-echo "[Step 3] Running Serial Baseline on full HIGGS dataset..."
-./bin/kmeans_serial -f data/higgs_clean.csv -k 8 -m 50 -t 1e-5 -o results/centroids_serial.txt
+# 3. Run Serial Baseline (50 iters + 11M physics cluster analysis + binary cache) & N/K scaling
+echo "[Step 3] Running Serial Baseline & Complexity Scaling on full 11M HIGGS dataset..."
+python3 scripts/run_serial_scaling.py
 
 # 4. Run Pure MPI Strong, Weak & Allreduce Scaling (1, 2, 4, 8, 16, 32, 64 cores)
 echo "[Step 4] Running Pure MPI Strong, Weak & Allreduce Scaling on Vanda physical cores..."
 python3 scripts/run_mpi_scaling.py --ranks "1,2,4,8,16,32,64"
 
-# 5. Run Hybrid MPI + OpenMP Scaling across 72 cores
+# 5. Run Hybrid MPI + OpenMP Scaling across 72 cores (CPU only)
 echo "[Step 5] Running Hybrid MPI + OpenMP Scaling (up to 72 cores)..."
-python3 scripts/run_hybrid_and_gpu_benchmarks.py --vanda
+python3 scripts/run_hybrid_and_gpu_benchmarks.py --vanda --cpu-only
 
 echo "=================================================================="
 echo "  Vanda CPU Benchmark Suite Complete! CSVs saved in results/      "
