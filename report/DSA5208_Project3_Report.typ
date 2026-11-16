@@ -49,8 +49,9 @@
       DSA5208: Scalable Distributed Computing for Data Science (Project 3)
     ]
     #v(0.25em)
-    #text(size: 9.2pt, fill: rgb("#333333"))[
-      *Author:* Nithillen Jayaseelan | *Student ID:* `A0351473E` | *Date:* November 2026
+    #text(size: 8.8pt, fill: rgb("#333333"))[
+      *Authors:* Nithillen Jayaseelan (`A0351473E`), Ashwin Sasikumar (`A0354333J`), Amitej Singh Datta (`A0352547Y`) \
+      *Course Date:* November 2026
     ]
     #v(0.15em)
     #text(size: 8.8pt, fill: rgb("#333333"))[
@@ -223,8 +224,8 @@ Figure 2 and Tables 5–6 show the official Vanda strong-scaling and collective 
       [#text(fill: white, weight: "bold")[$P$]],
       [#text(fill: white, weight: "bold")[Pts / Rank]],
       [#text(fill: white, weight: "bold")[Total (s)]],
-      [#text(fill: white, weight: "bold")[Comp (s)]],
-      [#text(fill: white, weight: "bold")[Comm (s)]],
+      [#text(fill: white, weight: "bold")[Max Comp (s)]],
+      [#text(fill: white, weight: "bold")[Max Comm (s)]],
       [#text(fill: white, weight: "bold")[Comm %]],
       [#text(fill: white, weight: "bold")[M pts/s]],
       [#text(fill: white, weight: "bold")[$S(P)$]],
@@ -271,7 +272,8 @@ Figure 2 and Tables 5–6 show the official Vanda strong-scaling and collective 
 *Analysis of Vanda MPI Scaling & Communication Behavior:*
 1. *Superlinear Cache Scaling ($P=2 -> 8$):* At $P = 2$, runtime drops from $31.4583 "s"$ to $14.4035 "s"$ (*$2.18 times$ speedup, $109.2%$ efficiency*) as splitting $2.464 "GB"$ across both NUMA sockets doubles aggregate L3 cache and memory channels. Near-ideal scaling holds through $P = 4$ ($3.98 times$, $99.6%$) and $P = 8$ ($7.98 times$, $99.7%$).
 2. *Amdahl's Law Collective Saturation ($P=16 -> 64$):* As per-rank data shrinks to $343,750$ points ($P=32$), per-rank compute falls to $1.2615 "s"$ while blocking `MPI_Allreduce` barrier waiting time (`comp` + OS skew across ranks) rises to $0.5703 "s"$ (*$41.8%$ of total runtime*). At $P = 64$, balanced division yields $0.6211 "s"$ ($12.42 "ms/iter"$), achieving *$50.65 times$ speedup ($79.1%$ strong efficiency)* and *$885.49 "M points/sec"$* aggregate throughput.
-3. *Packed Single-Call `MPI_Allreduce`:* Under transient rank arrival skew (such as $P = 8$, where 3 separate barriers magnified wait jitter to $1.6457 "s"$ / $33.9%$), packing all statistics into 1 `MPI_Allreduce` reduces communication wait by *$2.41 times$* to $0.6824 "s"$ ($17.9%$), speeding up total execution by $21.5%$ ($3.8170 "s"$ vs. $4.8595 "s"$), and also delivers the fastest packed MPI runtime at $P = 64$ ($0.6308 "s"$ vs. $0.6579 "s"$). Note also that max-rank `comp_time_s` + `comm_time_s` can slightly exceed `total_time_s` when different ranks experience different iteration-level barrier vs compute peaks across the 50 iterations.
+3. *Packed Single-Call `MPI_Allreduce`:* Under transient rank arrival skew (such as $P = 8$, where 3 separate barriers magnified wait jitter to $1.6457 "s"$ / $33.9%$), packing all statistics into 1 `MPI_Allreduce` reduces communication wait by *$2.41 times$* to $0.6824 "s"$ ($17.9%$), speeding up total execution by $21.5%$ ($3.8170 "s"$ vs. $4.8595 "s"$), and also delivers the fastest packed MPI runtime at $P = 64$ ($0.6308 "s"$ vs. $0.6579 "s"$).
+4. *Per-Rank `MPI_MAX` Timing Accounting:* In Tables 5, 7, and 9, `Max Comp (s)` and `Max Comm (s)` record independent `MPI_Reduce(..., MPI_MAX)` reductions across all ranks over the 50 iterations (the slowest rank's compute phase plus the longest rank's blocking barrier-wait + `MPI_Allreduce` time, with `Comm % = 100 * Max Comm / Total`). Consequently, `Max Comp + Max Comm` can exceed wall-clock `Total (s)` when different ranks experience peak compute vs. barrier arrival skew.
 
 == Pure MPI Weak Scaling on Vanda ($N = 200"k" -> 12.8"M"$ Points)
 To verify Gustafson's Law, Figure 3 and Table 7 hold $N_0 = 200,000$ synthetic Gaussian points per rank constant across $P = 1 dots.h 64$ ranks (`results/mpi_weak_scaling.csv`), scaling total problem size from $200,000$ to $12,800,000$ points.
@@ -293,8 +295,8 @@ To verify Gustafson's Law, Figure 3 and Table 7 hold $N_0 = 200,000$ synthetic G
       [#text(fill: white, weight: "bold")[Total Points $N$]],
       [#text(fill: white, weight: "bold")[Pts / Rank]],
       [#text(fill: white, weight: "bold")[Total (s)]],
-      [#text(fill: white, weight: "bold")[Comp (s)]],
-      [#text(fill: white, weight: "bold")[Comm (s)]],
+      [#text(fill: white, weight: "bold")[Max Comp (s)]],
+      [#text(fill: white, weight: "bold")[Max Comm (s)]],
       [#text(fill: white, weight: "bold")[Comm %]],
       [#text(fill: white, weight: "bold")[Weak Eff]],
       [#text(fill: white, weight: "bold")[Throughput]],
@@ -367,8 +369,8 @@ Figure 5 and Table 9 present all 21 measured $(P, T)$ hybrid combinations across
     [#text(fill: white, weight: "bold")[$P$]],
     [#text(fill: white, weight: "bold")[$T$]],
     [#text(fill: white, weight: "bold")[Total (s)]],
-    [#text(fill: white, weight: "bold")[Comp (s)]],
-    [#text(fill: white, weight: "bold")[Comm (s)]],
+    [#text(fill: white, weight: "bold")[Max Comp (s)]],
+    [#text(fill: white, weight: "bold")[Max Comm (s)]],
     [#text(fill: white, weight: "bold")[Comm %]],
     [#text(fill: white, weight: "bold")[Iter (ms)]],
     [#text(fill: white, weight: "bold")[M pts/s]],
@@ -407,9 +409,9 @@ Figure 5 and Table 9 present all 21 measured $(P, T)$ hybrid combinations across
 = Hardware GPU Acceleration (`MPI + CUDA`, OpenMP `-mp=gpu`, `MPI + Metal`)
 
 == GPU Parallel Architecture & Shared-Memory Bounds Guard
-1. *`src/kmeans_cuda.cu` (`MPI + CUDA` on Vanda NVIDIA A40):* Uses 256-thread blocks (`cudaMalloc`/`cudaMemcpy` once outside the iteration loop) and dynamically caches both centroids (`K*d` doubles) and block-local partial sums/counts inside on-chip `__shared__` memory whenever `2*K*d*8 + K*8 <= cudaDevAttrMaxSharedMemoryPerBlock`, falling back cleanly to global DRAM for huge $K$ (`Test Suite 3` verified at $K=40, d=32$). Our `atomicAddDouble` wrapper invokes native Ampere hardware `atomicAdd(double*, double)` on `sm_60+` (`-arch=sm_86`) and an `atomicCAS` loop fallback on older architectures, avoiding CUDA 12.9 header overload conflicts.
-2. *`src/kmeans_omp.cpp -g` (OpenMP GPU Target Offload):* Compiles with `nvc++ -mp=gpu` using `#pragma omp target teams distribute parallel for` for portable directive-based GPU offloading.
-3. *`src/kmeans_metal_gpu.mm` (`MPI + Apple Metal GPU Shader`):* Maps unified host/GPU buffers (`MTLResourceStorageModeShared`, zero PCIe copy overhead) on Apple Silicon M5, caches centroids in `threadgroup float s_centroids[1024]`, and executes fused multiply-add (`fma`) instructions across 256-thread threadgroups.
+1. *`src/kmeans_cuda.cu` (`MPI + CUDA` on Vanda NVIDIA A40):* Uses 256-thread blocks (`cudaMalloc`/`cudaMemcpy` of the $2.464 "GB"$ feature matrix staged once outside `t_start`, analogous to CPU CSV/binary loading, so `Total Time` captures iterative centroid uploads, CUDA kernel compute, and reduction downloads) and dynamically caches both centroids (`K*d` doubles) and block-local partial sums/counts inside on-chip `__shared__` memory whenever `2*K*d*8 + K*8 <= cudaDevAttrMaxSharedMemoryPerBlock`, falling back cleanly to global DRAM for huge $K$ (`Test Suite 3` verified at $K=40, d=32$). Our `atomicAddDouble` wrapper invokes native Ampere hardware `atomicAdd(double*, double)` on `sm_60+` (`-arch=sm_86`) and an `atomicCAS` loop fallback on older architectures, avoiding CUDA 12.9 header overload conflicts.
+2. *`src/kmeans_omp.cpp -g` (OpenMP GPU Target Offload):* Compiles with `nvc++ -mp=gpu` using `#pragma omp target teams distribute parallel for` for portable directive-based GPU offloading, while host OpenMP benchmarks default to close core pinning (`OMP_PROC_BIND=close`, `OMP_PLACES=cores`).
+3. *`src/kmeans_metal_gpu.mm` (`MPI + Apple Metal GPU Shader`):* Maps unified host/GPU buffers (`MTLResourceStorageModeShared`, zero PCIe copy overhead) on Apple Silicon M5, caches centroids in `threadgroup float s_centroids[1024]`, and executes fused multiply-add (`fma`) FP32 distance evaluations across 256-thread threadgroups with host FP64 accumulation.
 
 == Empirical NVIDIA A40 (`N = 11M`) & Apple M5 Metal GPU Results
 Figure 6 and Tables 10–12 report the authentic GPU measurements across cluster counts $K in {8, 16, 32}$ and 50-iteration backend comparisons.
@@ -515,7 +517,7 @@ Every parallel backend compares its converged centroids and WCSS/SSE objective a
   caption: [Numerical validation of parallel converged centroids and WCSS objective against serial baselines.]
 )
 
-*(Note: In Vanda job `1563433`, Step 2 validated CUDA against a fresh matching-iteration serial baseline at `1.509e-12` RMSE, while Step 3 ran on GPU before CPU job `1563432` finished updating `centroids_serial.txt` on `/scratch`, leaving the old 597k `Ref SSE: 8.742847e+06` on disk momentarily; once compared on the same $11,000,000$-row baseline, both `kmeans_cuda` and `kmeans_omp_gpu` match the exact 50-iteration serial SSE of `1.584590e+08`.)*
+*(Provenance Notes on Raw Committed Vanda Logs: (1) In `kmeans_cpu_benchmarks.o1563432`, Step 2 ran `test_correctness.py` prior to adding our `has_cuda_gpu()` CPU-node guard, causing test 8 to abort on CPU-only `CN-111` while Steps 3–5 completed; `test_correctness.py` is now patched and passes `16/16` locally. (2) In `kmeans_gpu_benchmark.o1563433`, Step 2 validated CUDA against a fresh matching-iteration serial baseline at `1.509e-12` RMSE, while Step 3 read a stale 597k `centroids_serial.txt` (`Ref SSE: 8.742847e+06`) on `/scratch` before CPU job `1563432` overwrote it; `scripts/vanda_gpu_benchmarks.pbs` is now patched to regenerate the 11M baseline before Step 2, and both `kmeans_cuda` and `kmeans_omp_gpu` match the exact 50-iteration 11M serial SSE of `1.584590e+08`.)*
 
 == Verbatim Runtime Terminal Captures (NUS Vanda HPC & Local Workstation)
 Terminal Captures 1–3 preserve direct verbatim runtime execution logs from Vanda CPU job `1563432` (`CN-111`), Vanda GPU job `1563433` (`GN-A40-044`), and local Apple M5 validation.

@@ -1,7 +1,7 @@
 # Complete Step-by-Step Reproducible Workflow, Commands & Measured Results
 
 **Course:** DSA5208 — Scalable Distributed Computing for Data Science (NUS)  
-**Author:** Nithillen Jayaseelan (**Student ID:** `A0351473E`)  
+**Authors:** Nithillen Jayaseelan (`A0351473E`), Ashwin Sasikumar (`A0354333J`), Amitej Singh Datta (`A0352547Y`)  
 **GitHub Repository:** [https://github.com/Nithillen/dsa5208-project3-scalable-kmeans](https://github.com/Nithillen/dsa5208-project3-scalable-kmeans)  
 **Dataset:** [UCI Machine Learning Repository — HIGGS Boson Dataset (ID #280)](https://archive.ics.uci.edu/dataset/280/higgs) ($N = 11,000,000 \times d = 28$ features)
 

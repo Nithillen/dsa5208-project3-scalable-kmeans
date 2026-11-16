@@ -1,7 +1,8 @@
 ================================================================================
 DSA5208 PROJECT 3: COMPLETE TECHNICAL SUMMARY, VANDA 11M BENCHMARKS & GUIDE
 ================================================================================
-Author / Student ID : Nithillen Jayaseelan (A0351473E)
+Authors / Group IDs : Nithillen Jayaseelan (A0351473E), Ashwin Sasikumar (A0354333J),
+                      Amitej Singh Datta (A0352547Y)
 Course              : DSA5208 — Scalable Distributed Computing for Data Science
 GitHub Repository   : https://github.com/Nithillen/dsa5208-project3-scalable-kmeans
 Dataset Source      : https://archive.ics.uci.edu/dataset/280/higgs
