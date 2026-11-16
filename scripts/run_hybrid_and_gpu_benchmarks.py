@@ -50,7 +50,10 @@ def run_omp(np, threads, accum="private", sched="static", K=8, iters=50,
     if out_file:
         cmd.extend(["-o", out_file])
 
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    run_env = os.environ.copy()
+    run_env.setdefault("OMP_PROC_BIND", "close")
+    run_env.setdefault("OMP_PLACES", "cores")
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=True, env=run_env)
     out = proc.stdout
 
     total_s = float(re.search(r"Total Time\s*:\s*([\d.]+)", out).group(1))
