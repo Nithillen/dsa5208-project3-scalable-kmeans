@@ -7,7 +7,7 @@ import urllib.request
 import zlib
 
 
-def prepare_higgs_dataset(target_rows=600000, input_gz=None, force=False, preserve_precision=True):
+def prepare_higgs_dataset(target_rows=0, input_gz=None, force=False, preserve_precision=True):
     """
     Streams and cleans the UCI HIGGS Boson High-Energy Physics Dataset (11,000,000 rows x 28 features).
     - Supports configurable row limits (--rows N, or --rows 0 / --all for all 11,000,000 rows).
@@ -24,7 +24,7 @@ def prepare_higgs_dataset(target_rows=600000, input_gz=None, force=False, preser
     if os.path.exists(output_csv) and os.path.exists(output_labels) and not force:
         with open(output_labels, "r") as lf:
             existing_rows = sum(1 for _ in lf)
-        if target_rows > 0 and existing_rows >= target_rows:
+        if (target_rows > 0 and existing_rows >= target_rows) or (target_rows == 0 and existing_rows >= 11000000):
             print(f"HIGGS dataset already prepared at:\n  {output_csv} ({existing_rows:,} rows)")
             print("  (Use --force to regenerate with different row count or precision settings.)")
             return
@@ -135,8 +135,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--rows",
         type=int,
-        default=600000,
-        help="Number of rows to extract (set --rows 0 or --all for all 11,000,000 rows; default: 600000)",
+        default=0,
+        help="Number of rows to extract (0 extracts all 11,000,000 rows; default: 0)",
     )
     parser.add_argument(
         "--all",

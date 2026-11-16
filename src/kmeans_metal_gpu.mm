@@ -88,7 +88,7 @@ int main(int argc, char* argv[]) {
     std::string input_file  = "data/higgs_clean.csv";
     std::string ref_file    = "results/centroids_serial.txt";
     std::string output_file = "results/centroids_metal.txt";
-    size_t N = 597638, d = 28, K = 8, max_iters = 50;
+    size_t N = 11000000, d = 28, K = 8, max_iters = 50;
     size_t max_rows_override = 0;
     double tolerance = 1e-5;
     unsigned int seed = 42;

@@ -3,17 +3,14 @@ bin/
 *.o
 *.out
 
-# Large dataset files (>100 MB GitHub limit; regenerate via scripts/prepare_higgs_data.py)
+# Large dataset files (>100 MB GitHub limit; regenerate via scripts/prepare_higgs_data.py --all)
 data/*.csv
 data/*.txt
 data/*.gz
+data/*.bin
+data/*.bin.*
 
-# HPC batch logs (per project instructions: do not submit raw log files)
-*.log
-*.o[0-9]*
-*.e[0-9]*
-
-# macOS & Python cache
+# Python cache & macOS metadata
 .DS_Store
 __pycache__/
 *.pyc

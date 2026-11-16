@@ -16,6 +16,8 @@ import re
 import shutil
 import subprocess
 
+from run_serial_scaling import get_total_rows
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BIN_MPI = os.path.join(BASE_DIR, "bin", "kmeans_mpi")
 DATA_CSV = os.path.join(BASE_DIR, "data", "higgs_clean.csv")
@@ -47,7 +49,7 @@ def run_mpi(np, args, oversubscribe=False):
     max_err = float(err_match.group(1)) if err_match else 0.0
 
     n_match = re.search(r"Total Points\s*:\s*(\d+)", out)
-    n_total = int(n_match.group(1)) if n_match else 597638
+    n_total = int(n_match.group(1)) if n_match else get_total_rows()
     return total_s, comp_s, comm_s, comm_pct, avg_iter_ms, throughput, final_sse, max_err, n_total
 
 
@@ -68,9 +70,10 @@ def main():
 
     os.makedirs(RESULTS_DIR, exist_ok=True)
     ranks_list = [int(x.strip()) for x in args.ranks.split(",") if x.strip()]
+    total_rows = get_total_rows()
 
     print("========================================================================================")
-    print("  Step 2A: Pure MPI Strong Scaling on UCI HIGGS Dataset (N=597,638, d=28, K=8, 50 Iters)")
+    print(f"  Step 2A: Pure MPI Strong Scaling on UCI HIGGS Dataset (N={total_rows:,}, d=28, K=8, 50 Iters)")
     print("========================================================================================")
     print(
         f"{'Ranks (P)':>9} | {'Total (s)':>9} | {'Comp (s)':>8} | {'Comm (s)':>8} | "
