@@ -1,0 +1,196 @@
+==================================================================
+  DSA5208 Project 3: Vanda NVIDIA GPU Benchmark (11M Rows)        
+  Host Node : GN-A40-023                                         
+  Date      : Mon Nov 16 04:23:57 PM +08 2026                                             
+==================================================================
+Mon Nov 16 16:23:57 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 575.57.08              Driver Version: 575.57.08      CUDA Version: 12.9     |
+|-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A40                     Off |   00000000:AD:00.0 Off |                    0 |
+|  0%   45C    P8             33W /  300W |       0MiB /  46068MiB |      0%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+                                                                                         
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+[Step 1] Compiling Serial, OpenMP, CUDA, and OpenMP GPU targets...
+[Step 1B] Generating verified 11M 50-iter serial reference centroids...
+========================================================
+  Serial K-Means (Lloyd's Algorithm) - HIGGS Dataset    
+========================================================
+Loaded 11000000 data points with 28 dimensions (308000000 floats) from data/higgs_clean.csv
+CSV load time: 8.55 seconds.
+Running K-Means:
+  Points (N)    : 11000000
+  Features (d)  : 28
+  Total Floats  : 308000000
+  Clusters (K)  : 8
+  Max Iters     : 50
+  Tolerance     : 0.00
+
+Iteration  1 | Max Centroid Shift: 3.1182e+00 | SSE: 2.530096e+08 | Time: 1504.05 ms
+Iteration  2 | Max Centroid Shift: 8.8404e-01 | SSE: 1.713936e+08 | Time: 1494.89 ms
+Iteration  3 | Max Centroid Shift: 5.5180e-01 | SSE: 1.652464e+08 | Time: 1491.21 ms
+Iteration  4 | Max Centroid Shift: 3.6977e-01 | SSE: 1.627209e+08 | Time: 937.59 ms
+Iteration  5 | Max Centroid Shift: 3.1739e-01 | SSE: 1.614013e+08 | Time: 939.70 ms
+Iteration  6 | Max Centroid Shift: 2.8632e-01 | SSE: 1.605948e+08 | Time: 938.88 ms
+Iteration  7 | Max Centroid Shift: 2.2116e-01 | SSE: 1.600641e+08 | Time: 934.16 ms
+Iteration  8 | Max Centroid Shift: 1.6411e-01 | SSE: 1.597692e+08 | Time: 934.72 ms
+Iteration  9 | Max Centroid Shift: 1.1414e-01 | SSE: 1.596093e+08 | Time: 934.71 ms
+Iteration 10 | Max Centroid Shift: 7.2349e-02 | SSE: 1.595238e+08 | Time: 930.15 ms
+Iteration 11 | Max Centroid Shift: 6.1366e-02 | SSE: 1.594759e+08 | Time: 929.39 ms
+Iteration 12 | Max Centroid Shift: 6.0181e-02 | SSE: 1.594417e+08 | Time: 931.90 ms
+Iteration 13 | Max Centroid Shift: 7.7448e-02 | SSE: 1.594072e+08 | Time: 933.03 ms
+Iteration 14 | Max Centroid Shift: 1.0810e-01 | SSE: 1.593614e+08 | Time: 928.33 ms
+Iteration 15 | Max Centroid Shift: 1.6160e-01 | SSE: 1.592866e+08 | Time: 929.28 ms
+Iteration 16 | Max Centroid Shift: 2.4571e-01 | SSE: 1.591390e+08 | Time: 929.82 ms
+Iteration 17 | Max Centroid Shift: 2.4961e-01 | SSE: 1.588734e+08 | Time: 926.45 ms
+Iteration 18 | Max Centroid Shift: 1.6265e-01 | SSE: 1.586931e+08 | Time: 930.63 ms
+Iteration 19 | Max Centroid Shift: 1.9828e-01 | SSE: 1.586037e+08 | Time: 926.97 ms
+Iteration 20 | Max Centroid Shift: 1.3463e-01 | SSE: 1.584914e+08 | Time: 929.53 ms
+Iteration 21 | Max Centroid Shift: 1.5809e-02 | SSE: 1.584609e+08 | Time: 931.51 ms
+Iteration 22 | Max Centroid Shift: 5.7714e-03 | SSE: 1.584596e+08 | Time: 933.53 ms
+Iteration 23 | Max Centroid Shift: 3.6741e-03 | SSE: 1.584593e+08 | Time: 931.09 ms
+Iteration 24 | Max Centroid Shift: 2.6551e-03 | SSE: 1.584591e+08 | Time: 933.13 ms
+Iteration 25 | Max Centroid Shift: 2.0212e-03 | SSE: 1.584591e+08 | Time: 930.13 ms
+Iteration 26 | Max Centroid Shift: 1.5799e-03 | SSE: 1.584590e+08 | Time: 929.80 ms
+Iteration 27 | Max Centroid Shift: 1.2218e-03 | SSE: 1.584590e+08 | Time: 932.65 ms
+Iteration 28 | Max Centroid Shift: 9.7790e-04 | SSE: 1.584590e+08 | Time: 931.55 ms
+Iteration 29 | Max Centroid Shift: 7.4595e-04 | SSE: 1.584590e+08 | Time: 934.89 ms
+Iteration 30 | Max Centroid Shift: 6.1131e-04 | SSE: 1.584590e+08 | Time: 927.02 ms
+Iteration 31 | Max Centroid Shift: 4.7332e-04 | SSE: 1.584590e+08 | Time: 930.80 ms
+Iteration 32 | Max Centroid Shift: 3.7415e-04 | SSE: 1.584590e+08 | Time: 932.06 ms
+Iteration 33 | Max Centroid Shift: 2.9609e-04 | SSE: 1.584590e+08 | Time: 930.83 ms
+Iteration 34 | Max Centroid Shift: 2.1459e-04 | SSE: 1.584590e+08 | Time: 932.50 ms
+Iteration 35 | Max Centroid Shift: 1.7994e-04 | SSE: 1.584590e+08 | Time: 926.94 ms
+Iteration 36 | Max Centroid Shift: 1.3821e-04 | SSE: 1.584590e+08 | Time: 931.03 ms
+Iteration 37 | Max Centroid Shift: 1.0571e-04 | SSE: 1.584590e+08 | Time: 928.58 ms
+Iteration 38 | Max Centroid Shift: 7.9840e-05 | SSE: 1.584590e+08 | Time: 928.35 ms
+Iteration 39 | Max Centroid Shift: 5.4622e-05 | SSE: 1.584590e+08 | Time: 932.82 ms
+Iteration 40 | Max Centroid Shift: 3.7975e-05 | SSE: 1.584590e+08 | Time: 932.07 ms
+Iteration 41 | Max Centroid Shift: 2.7815e-05 | SSE: 1.584590e+08 | Time: 930.94 ms
+Iteration 42 | Max Centroid Shift: 2.4095e-05 | SSE: 1.584590e+08 | Time: 930.63 ms
+Iteration 43 | Max Centroid Shift: 2.0162e-05 | SSE: 1.584590e+08 | Time: 928.91 ms
+Iteration 44 | Max Centroid Shift: 2.0500e-05 | SSE: 1.584590e+08 | Time: 926.94 ms
+Iteration 45 | Max Centroid Shift: 1.3403e-05 | SSE: 1.584590e+08 | Time: 927.49 ms
+Iteration 46 | Max Centroid Shift: 1.6001e-05 | SSE: 1.584590e+08 | Time: 930.05 ms
+Iteration 47 | Max Centroid Shift: 9.9723e-06 | SSE: 1.584590e+08 | Time: 928.75 ms
+Iteration 48 | Max Centroid Shift: 9.0725e-06 | SSE: 1.584590e+08 | Time: 929.09 ms
+Iteration 49 | Max Centroid Shift: 8.1402e-06 | SSE: 1.584590e+08 | Time: 930.55 ms
+Iteration 50 | Max Centroid Shift: 6.7086e-06 | SSE: 1.584590e+08 | Time: 927.56 ms
+
+================ Benchmark Summary ================
+Total Iterations : 50 (crossed tol=1e-5 at iter 47)
+Total Time       : 48.2479 seconds
+Avg Time/Iter    : 964.96 ms
+Throughput       : 11.40 M points/sec
+Final SSE (WCSS) : 1.584590e+08
+===================================================
+
+================ HIGGS Boson Physical Cluster Analysis ================
+Cluster |   Events | Signal% | Lepton pT |   MET |  m_bb | m_wbb | m_wwbb
+-----------------------------------------------------------------------
+   C 1  |  1560788 |  53.90% |     0.990 | 1.015 | 0.784 | 0.982 |  0.957
+   C 2  |  1729399 |  52.77% |     0.990 | 0.990 | 1.120 | 1.056 |  0.950
+   C 3  |  1120799 |  52.57% |     0.992 | 1.008 | 0.903 | 1.014 |  0.966
+   C 4  |  1732201 |  52.64% |     0.990 | 0.989 | 1.120 | 1.056 |  0.950
+   C 5  |  1121982 |  52.46% |     0.993 | 1.008 | 0.905 | 1.014 |  0.967
+   C 6  |   923472 |  49.72% |     1.007 | 1.039 | 0.754 | 0.992 |  0.983
+   C 7  |  1263796 |  57.56% |     0.983 | 0.975 | 0.927 | 1.042 |  0.952
+   C 8  |  1547563 |  51.62% |     0.992 | 0.984 | 1.103 | 1.079 |  0.969
+=======================================================================
+
+Final centroids saved to results/centroids_serial.txt for validation.
+[Step 2] Running NVIDIA CUDA GPU vs CPU Baseline Scaling (K=8, 16, 32 on 11M rows)...
+
+=============================================================================================
+  Step 4: GPU Acceleration (MPI + GPU vs. 1-Core & 4-Core CPU on N=11,000,000, 30 Iters)
+=============================================================================================
+Clusters K | GPU Device         | 1C CPU (s) | 4C OMP (s) | GPU Tot (s) | GPU Kern (s) | Speedup 1C | Centroid RMSE
+----------------------------------------------------------------------------------------------------------------
+         8 | NVIDIA A40         |    21.7097 |     6.1889 |      3.0485 |       3.0477 |      7.12x |     1.509e-12
+        16 | NVIDIA A40         |    35.9229 |    12.2053 |      5.7699 |       5.7691 |      6.23x |     1.521e-12
+        32 | NVIDIA A40         |    61.8688 |    17.0752 |     12.4459 |      12.4449 |      4.97x |     1.562e-12
+
+Saved benchmark CSV results in results/.
+[Step 3] Running 50-Iteration Validation (CUDA + OpenMP -mp=gpu)...
+
+================ Hybrid MPI+CUDA Summary ================
+GPU Hardware     : NVIDIA A40
+Total Points (N) : 11000000
+MPI Ranks (GPUs) : 1
+Shared Mem Cache : ENABLED
+Total Iterations : 50
+Total Time       : 5.0769 seconds
+GPU Kernel+Copy  : 5.0756 seconds
+MPI_Allreduce Tm : 0.0013 seconds
+Avg Time/Iter    : 101.54 ms
+Throughput       : 108.33 M points/sec
+Final SSE (WCSS) : 1.584590e+08
+=========================================================
+
+================ Correctness Validation ================
+Reference File   : results/centroids_serial.txt
+Max Abs Error    : 4.9776e-12
+Centroid RMSE    : 1.7701e-12
+Final SSE (WCSS) : 1.584590e+08
+Ref SSE (Serial) : 1.584590e+08
+Rel SSE Diff     : 1.3673e-13
+Validation Status: PASSED (Matches Serial Baseline)
+========================================================
+====================================================================
+  Hybrid MPI + OpenMP K-Means (GPU Target Offload)
+====================================================================
+  MPI Ranks (P)     : 1
+  OMP Threads/Rank  : 36
+  Total Workers     : 36
+  Accumulation Mode : private
+  OMP Schedule      : static
+  Allreduce Mode    : separate
+  Total Points (N)  : 11000000 (11000000 pts/rank)
+  Features (d)      : 28 | Clusters (K): 8
+
+Iteration  1 | Max Shift: 3.1182e+00 | SSE: 2.530096e+08 | Comp: 422.76 ms | Comm: 0.06 ms
+Iteration  2 | Max Shift: 8.8404e-01 | SSE: 1.713936e+08 | Comp: 314.84 ms | Comm: 0.04 ms
+Iteration  3 | Max Shift: 5.5180e-01 | SSE: 1.652464e+08 | Comp: 309.23 ms | Comm: 0.03 ms
+Iteration 10 | Max Shift: 7.2349e-02 | SSE: 1.595238e+08 | Comp: 426.75 ms | Comm: 0.03 ms
+Iteration 20 | Max Shift: 1.3463e-01 | SSE: 1.584914e+08 | Comp: 305.07 ms | Comm: 0.03 ms
+Iteration 30 | Max Shift: 6.1131e-04 | SSE: 1.584590e+08 | Comp: 308.61 ms | Comm: 0.03 ms
+Iteration 40 | Max Shift: 3.7975e-05 | SSE: 1.584590e+08 | Comp: 304.59 ms | Comm: 0.03 ms
+Iteration 50 | Max Shift: 6.7086e-06 | SSE: 1.584590e+08 | Comp: 304.71 ms | Comm: 0.05 ms
+
+================ Hybrid MPI+OpenMP Summary ================
+MPI Ranks (P)    : 1
+OMP Threads (T)  : 36
+Total Cores (P*T): 36
+Total Iterations : 50
+Total Time       : 16.9227 seconds
+Computation Time : 16.9207 seconds (100.0%)
+MPI_Allreduce Tm : 0.0018 seconds (0.0%)
+Avg Time/Iter    : 338.45 ms
+Throughput       : 32.50 M points/sec
+Final SSE (WCSS) : 1.584590e+08
+===========================================================
+
+================ Correctness Validation ================
+Reference File   : results/centroids_serial.txt
+Max Abs Error    : 4.9776e-12
+Centroid RMSE    : 1.7701e-12
+Final SSE (WCSS) : 1.584590e+08
+Ref SSE (Serial) : 1.584590e+08
+Rel SSE Diff     : 1.3673e-13
+Validation Status: PASSED (Matches Serial Baseline)
+========================================================
+==================================================================
+  Vanda GPU Benchmark Complete!                                   
+==================================================================
