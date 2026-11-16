@@ -1,34 +1,25 @@
-# DSA5208 Project 3: Scalable Hybrid Parallel K-Means Clustering (`MPI + OpenMP + GPU`)
+# DSA5208 Project 3: Scalable Hybrid Parallel K-Means Clustering (`MPI + OpenMP + CUDA + Metal`)
 
 **Course:** DSA5208 — Scalable Distributed Computing for Data Science (NUS)  
-**Target Platforms:** NUS Vanda Supercomputer (72-core CPU nodes & NVIDIA GPUs), NUS Atlas8, and Apple M5 Local Development  
+**Author:** Nithillen Jayaseelan (**Student ID:** `A0351473E`)  
+**Platforms:** NUS Vanda Supercomputer (`CN-111`: Dual-Socket 72-Core Xeon Platinum 8452Y; `GN-A40-044`: NVIDIA A40 48 GB GPU) & Apple M5 (Local Verification / Metal Shader)  
 **Algorithm:** Lloyd's K-Means Clustering (Iterative Expectation–Maximization)  
-**Dataset:** [UCI Machine Learning Repository — HIGGS Dataset (ID #280)](https://archive.ics.uci.edu/dataset/280/higgs) ($N = 597,638$ collision events $\times$ $d = 28$ kinematic features) + Multi-Million Point Synthetic Gaussian Generator for Weak Scaling up to 256 CPU Cores.
+**Dataset:** Full [UCI Machine Learning Repository — HIGGS Boson Dataset (ID #280)](https://archive.ics.uci.edu/dataset/280/higgs) ($N = 11,000,000$ collision events $\times$ $d = 28$ continuous physics features $= 308,000,000$ IEEE-754 doubles, $2.464\text{ GB}$ in RAM) + Multi-Million Point Synthetic Gaussian Generator for Weak Scaling up to $12,800,000$ Points.
 
-### Key Project Documents in This Repository:
-- **[`DSA5208_Project3_Report.pdf`](DSA5208_Project3_Report.pdf):** Complete compiled academic PDF report containing all 7 log-log scaling figures, mathematical formulations, parallel design discussions, validation tables, HIGGS physics analysis, and AI usage declaration.
-- **[`STEP_BY_STEP_WORKFLOW_README.md`](STEP_BY_STEP_WORKFLOW_README.md):** Detailed step-by-step log of how the dataset was downloaded/extracted (file counts & exact byte/MB sizes), every terminal command executed at each stage, and the exact runtime differences across all methods.
-- **[`PROJECT_EXPLANATION_AND_RESULTS.txt`](PROJECT_EXPLANATION_AND_RESULTS.txt):** Plain-text summary of all implementations, dataset sizes, runtime comparisons, and NUS Vanda HPC submission instructions.
+### Key Project Documents & Artifacts in This Repository
+- **[`DSA5208_Project3_Report.pdf`](DSA5208_Project3_Report.pdf)** (source: [`report/DSA5208_Project3_Report.typ`](report/DSA5208_Project3_Report.typ)): Complete publication-grade academic PDF report with mathematical formulations, all 7 log-log scaling figures, 3 verbatim runtime terminal screenshots, validation proofs, HIGGS physics analysis on all 11,000,000 rows, and AI usage declaration.
+- **[`kmeans_cpu_benchmarks.o1563432`](kmeans_cpu_benchmarks.o1563432)** & **[`kmeans_gpu_benchmark.o1563433`](kmeans_gpu_benchmark.o1563433)**: Raw, unmodified NUS Vanda PBS job outputs covering the complete 11,000,000-row CPU and NVIDIA A40 benchmark suites.
+- **[`STEP_BY_STEP_WORKFLOW_README.md`](STEP_BY_STEP_WORKFLOW_README.md)**: Complete command log covering UCI dataset streaming, binary caching, compilation, local testing, Vanda PBS execution, and figure/PDF generation.
+- **[`PROJECT_EXPLANATION_AND_RESULTS.txt`](PROJECT_EXPLANATION_AND_RESULTS.txt)**: Plain-text technical summary of all implementations, hardware platforms, and measured runtime comparisons.
 
 ---
 
 ## 1. Why This Algorithm & Dataset Were Chosen
 
-### A. Why Lloyd's K-Means Clustering?
-The project requires an algorithm that is **not embarrassingly parallel** and reveals rich parallel scaling trade-offs across distributed memory (`MPI`), shared memory (`OpenMP`), and accelerators (`GPU / CUDA / Metal`):
-1. **Iterative Global Synchronization (`MPI_Allreduce`):** Unlike embarrassingly parallel tasks (such as Monte Carlo sampling), K-Means is an iterative Expectation–Maximization (EM) algorithm. In every single iteration $t$, each worker computes distances from its local data partition to all $K$ centroids, accumulates partial feature sums $\mathbf{S}_k^{(p)} \in \mathbb{R}^d$ and counts $C_k^{(p)} \in \mathbb{Z}$, and **must synchronize globally** via `MPI_Allreduce` before iteration $t+1$ can begin.
-2. **Computation-to-Communication Ratio:**
-   - **Per-iteration Computation:** $\mathcal{O}\!\left(\frac{N \cdot K \cdot d}{P}\right)$ floating-point operations per rank.
-   - **Per-iteration Communication:** $\mathcal{O}(K \cdot d \cdot \log P)$ message reduction complexity across $P$ MPI ranks.
-   - As $P$ scales up to **256 CPU cores**, the local computation per rank shrinks by $256\times$, exposing the `MPI_Allreduce` latency floor (Amdahl's Law in strong scaling vs. Gustafson's Law in weak scaling).
-3. **Shared-Memory & GPU Write Contention:** During the accumulation step, thousands of threads attempt to add $d$-dimensional vectors into the same $K$ centroid buckets simultaneously. Comparing **cache-padded thread-private accumulators** vs. **atomic updates** (`#pragma omp atomic` / CUDA `atomicAdd` / shared-memory block reductions) provides a clear, measurable design discussion for the report.
-4. **Exact Deterministic Validation:** When initialized deterministically across ranks, the Serial, Pure MPI, `MPI + OpenMP`, and GPU implementations converge to the **exact same centroids** within floating-point precision ($\sim 10^{-12}$ for FP64 CPU/CUDA).
-
-### B. Why the UCI HIGGS Boson Dataset (ID #280)?
-- **Source:** [https://archive.ics.uci.edu/dataset/280/higgs](https://archive.ics.uci.edu/dataset/280/higgs) (Baldi, Sadowski, & Whiteson, *Nature Communications*, 2014).
-- **Scale & Dimensionality:** Each collision event has **$d = 28$ continuous physics features**:
-  - **21 low-level kinematic features:** Transverse momenta ($p_T$), pseudorapidities ($\eta$), azimuthal angles ($\phi$) of leptons and up to 4 particle jets, plus Missing Transverse Energy ($\text{MET}$).
-  - **7 high-level invariant mass features:** $m_{jj}, m_{jjj}, m_{\ell\nu}, m_{j\ell\nu}, m_{bb}, m_{wbb}, m_{wwbb}$ constructed by particle physicists to distinguish **Higgs boson signal events ($y=1$, $H^0 \to W^+W^- \to b\bar{b}\ell\nu$)** from **background events ($y=0$, top-quark pair production $t\bar{t}$)**.
+1. **Iterative Global Synchronization (`MPI_Allreduce`):** Unlike embarrassingly parallel tasks, Lloyd's K-Means requires global synchronization across all ranks at the end of **every** iteration ($K \times d = 224$ sums, $K = 8$ counts, scalar SSE) before the next assignment pass can begin.
+2. **Computation vs. Communication & NUMA Effects:** With $\mathcal{O}(N \cdot K \cdot d / P)$ computation per rank and $\mathcal{O}(K \cdot d \cdot \log P)$ collective latency, scaling from $P = 1$ to $72$ CPU cores exposes superlinear NUMA cache benefits ($P=2 \to 8$), Amdahl's Law barrier saturation ($P=16 \to 64$), and socket-aligned Hybrid `MPI + OpenMP` topology trade-offs (`1x72` vs. `2x36` vs. `72x1`).
+3. **Shared-Memory & GPU Write Contention:** Comparing 64-byte cache-padded thread-private OpenMP accumulators against `#pragma omp atomic`, and comparing NVIDIA CUDA (`__shared__` centroid caching), OpenMP target offload (`-mp=gpu`), and Apple Metal shaders yields massive measurable speedups ($13.52\times$ OpenMP design speedup, $9.67\times$ A40 CUDA vs. serial, $50.65\times$ 64-rank MPI speedup).
+4. **Full 11,000,000-Row Real Physics Workload:** Every primary CPU, MPI, Hybrid, and NVIDIA A40 GPU experiment runs on **all 11,000,000 collision events** (`0` skipped rows) from the UCI HIGGS dataset (`2.62 GB` compressed, `7.48 GB` uncompressed).
 
 ---
 
@@ -36,155 +27,106 @@ The project requires an algorithm that is **not embarrassingly parallel** and re
 
 ```text
 project3_scalable/
-├── .gitignore                             # Excludes >100 MB raw CSVs & compiled binaries from Git
-├── Makefile                               # Builds Serial, MPI, OpenMP, Metal GPU, and CUDA targets
-├── README.md                              # Complete project documentation & benchmark results
-├── bin/                                   # Compiled executables
-├── data/                                  # Generated via scripts/prepare_higgs_data.py
-│   ├── higgs_clean.csv                    # 597,638 x 28 cleaned HIGGS features (131 MB)
-│   └── higgs_labels.txt                   # Ground-truth labels (1 = Higgs signal, 0 = background)
+├── .gitignore                             # Tracks raw Vanda .o* logs & PDFs; excludes >100 MB data & .bin caches
+├── Makefile                               # Builds Serial, MPI, Standalone/Hybrid OpenMP, Metal GPU, and CUDA targets
+├── DSA5208_Project3_Report.pdf            # Compiled 13-page academic PDF report
+├── README.md                              # Project documentation & verified 11M benchmark summary
+├── PROJECT_EXPLANATION_AND_RESULTS.txt    # Plain-text summary & Vanda workflow guide
+├── STEP_BY_STEP_WORKFLOW_README.md        # Step-by-step reproducible command & result log
+├── kmeans_cpu_benchmarks.o1563432         # Verbatim Vanda CN-111 (72-core Xeon) 11M CPU log
+├── kmeans_gpu_benchmark.o1563433          # Verbatim Vanda GN-A40-044 (NVIDIA A40) 11M GPU log
 ├── results/
-│   ├── centroids_serial.txt               # Converged 8 x 28 reference centroids for validation
+│   ├── centroids_serial.txt               # Converged 8 x 28 11M reference centroids
 │   ├── centroids_mpi.txt                  # Converged 8 x 28 Pure MPI centroids
 │   ├── centroids_omp.txt                  # Converged 8 x 28 Hybrid MPI+OpenMP centroids
-│   ├── serial_scaling_N.csv               # 1-node serial runtime scaling vs. problem size N
-│   ├── serial_scaling_K.csv               # 1-node serial runtime scaling vs. cluster count K
-│   ├── mpi_strong_scaling.csv             # Pure MPI strong scaling on UCI HIGGS
-│   ├── mpi_weak_scaling.csv               # Pure MPI weak scaling (200k pts/rank)
-│   ├── omp_design_choices.csv             # OpenMP private vs. atomic & schedule comparisons
-│   ├── hybrid_mpi_omp_grid.csv            # Hybrid MPI ranks (P) x OpenMP threads (T) trade-offs
-│   └── gpu_benchmark.csv                  # Hardware GPU vs. CPU scaling across K={8, 16, 32}
+│   ├── centroids_omp_gpu.txt              # Converged 8 x 28 OpenMP -mp=gpu centroids
+│   ├── centroids_cuda.txt                 # Converged 8 x 28 NVIDIA A40 CUDA centroids
+│   ├── serial_scaling_N.csv               # Vanda 1-core serial scaling vs. N (100k -> 11M)
+│   ├── serial_scaling_K.csv               # Vanda 1-core serial scaling vs. K (2 -> 32 on 11M)
+│   ├── mpi_strong_scaling.csv             # Vanda Pure MPI strong scaling (P=1..64 on 11M)
+│   ├── mpi_allreduce_comparison.csv       # Vanda separate (3-call) vs. packed (1-call) Allreduce
+│   ├── mpi_weak_scaling.csv               # Vanda Pure MPI weak scaling (N=200k -> 12.8M)
+│   ├── omp_design_choices.csv             # Vanda private vs. atomic & loop schedules (11M)
+│   ├── hybrid_mpi_omp_grid.csv            # Vanda full 21-point (P x T) NUMA grid (1..72 cores, 11M)
+│   ├── gpu_benchmark.csv                  # Vanda NVIDIA A40 CUDA vs. Xeon CPU (K={8,16,32}, 11M)
+│   └── gpu_benchmark_apple_metal.csv      # Local Apple M5 Metal GPU vs. CPU (K={8,16,32}, 597,638)
+├── report/
+│   ├── DSA5208_Project3_Report.typ        # Typst report source
+│   └── figures/                           # 7 Matplotlib log-log figures + 3 terminal screenshots
 ├── scripts/
-│   ├── prepare_higgs_data.py              # Fast HTTP streaming downloader & cleaner for UCI HIGGS
-│   ├── run_serial_scaling.py              # Step 1: 1-node serial scaling benchmark suite
-│   ├── run_mpi_scaling.py                 # Step 2: Pure MPI strong & weak scaling benchmark suite
-│   ├── run_hybrid_and_gpu_benchmarks.py   # Step 3 & 4: Hybrid MPI+OpenMP & GPU benchmark suite
-│   ├── vanda_mpi_256cores.pbs             # Vanda PBS script for 1 to 256 CPU cores (Pure MPI)
-│   └── vanda_hybrid_gpu.pbs               # Vanda PBS script for 72-core Hybrid OMP & NVIDIA GPU
+│   ├── prepare_higgs_data.py              # Streaming UCI HIGGS extractor (--all for all 11M rows)
+│   ├── test_correctness.py                # 16-test automated correctness & SSE parity suite
+│   ├── run_serial_scaling.py              # Step 1 benchmark runner
+│   ├── run_mpi_scaling.py                 # Step 2 benchmark runner
+│   ├── run_hybrid_and_gpu_benchmarks.py   # Step 3 & 4 benchmark runner (--cpu-only / --gpu-only)
+│   ├── generate_report_figures.py         # Generates fig1..fig7 from results/*.csv
+│   ├── vanda_cpu_benchmarks.pbs           # Vanda 72-core CPU PBS job script (11M rows)
+│   ├── vanda_gpu_benchmarks.pbs           # Vanda NVIDIA A40 GPU PBS job script (11M rows)
+│   └── vanda_mpi_256cores.pbs             # Optional multi-node Vanda 256-core Pure MPI script
 └── src/
-    ├── kmeans_serial.cpp                  # Step 1: 1-core reference baseline + HIGGS physics analyzer
-    ├── kmeans_mpi.cpp                     # Step 2: Pure MPI (MPI_Scatterv + MPI_Allreduce)
-    ├── kmeans_omp.cpp                     # Step 3: Hybrid MPI + OpenMP (CPU + GPU Target Offload)
-    ├── kmeans_cuda.cu                     # Step 4A: Hybrid MPI + CUDA (for Vanda NVIDIA GPUs)
-    └── kmeans_metal_gpu.mm                # Step 4B: Hybrid MPI + Apple Metal GPU Shader (M5 GPU)
+    ├── kmeans_common.hpp                  # Fast strtod CSV loader, atomic .bin cache, SSE validator
+    ├── kmeans_serial.cpp                  # Serial baseline + 11M HIGGS physics analyzer
+    ├── kmeans_mpi.cpp                     # Pure MPI (MPI_Scatterv / Parallel I/O + Packed Allreduce)
+    ├── kmeans_omp.cpp                     # Hybrid MPI + OpenMP (private vs. atomic, -mp=gpu offload)
+    ├── kmeans_cuda.cu                     # Hybrid MPI + CUDA (__shared__ centroid cache + atomicAddDouble)
+    └── kmeans_metal_gpu.mm                # Hybrid MPI + Apple Metal GPU shader
 ```
 
 ---
 
-## 3. Step 1 Completed: 1-Node Serial Baseline & Scaling Analysis on UCI HIGGS
+## 3. Verified NUS Vanda Benchmark Results (Full $N = 11,000,000$ UCI HIGGS Dataset)
 
-### A. Runtime Scaling vs. Problem Size $N$ (Fixed $K = 8, d = 28, \text{Iterations} = 30$)
-Empirical scaling on the UCI HIGGS dataset (`results/serial_scaling_N.csv`) confirms exact linear $\mathcal{O}(N)$ complexity per iteration, maintaining a steady throughput of **~22.6 million points/sec**:
+### A. 1-Node Serial Baseline & Scaling (`CN-111`, Intel Xeon Platinum 8452Y)
+50-iteration reference run on all $11,000,000$ rows ($K=8, d=28$): **`49.0870 s`** (`981.74 ms/iter`, `11.20 M pts/s`, crossed `tol=1e-5` at iteration `47`, `Final SSE = 1.584590e+08`, CSV initial load `8.32 s`).
 
-| Points ($N$) | Total Floats ($N \times d$) | Total Time ($30$ Iters) | Avg Time / Iter | Throughput | Scaling Factor vs. $25\text{k}$ |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| $25,000$ | $700,000$ | $0.0338\text{ s}$ | $1.13\text{ ms}$ | $22.18\text{ M pts/s}$ | $1.00\times$ |
-| $50,000$ | $1,400,000$ | $0.0651\text{ s}$ | $2.17\text{ ms}$ | $23.05\text{ M pts/s}$ | $1.93\times$ |
-| $100,000$ | $2,800,000$ | $0.1307\text{ s}$ | $4.36\text{ ms}$ | $22.95\text{ M pts/s}$ | $3.87\times$ |
-| $200,000$ | $5,600,000$ | $0.2633\text{ s}$ | $8.78\text{ ms}$ | $22.79\text{ M pts/s}$ | $7.79\times$ |
-| $400,000$ | $11,200,000$ | $0.5311\text{ s}$ | $17.70\text{ ms}$ | $22.59\text{ M pts/s}$ | $15.71\times$ |
-| $597,638$ | $16,733,864$ | $0.7943\text{ s}$ | $26.48\text{ ms}$ | $22.57\text{ M pts/s}$ | $23.50\times$ |
+- **Scaling vs. $N$ (`results/serial_scaling_N.csv`, $K=8, 30$ Iters):** `100k` (`0.4079 s`, `7.35 M/s`) $\to$ `500k` (`1.2805 s`, `11.71 M/s`) $\to$ `1M` (`2.7431 s`, `10.94 M/s`) $\to$ `2.5M` (`6.4020 s`, `11.72 M/s`) $\to$ `5M` (`12.8151 s`, `11.70 M/s`) $\to$ **`11,000,000` (`28.0452 s`, `934.84 ms/iter`, `11.77 M pts/s`)**.
+- **Scaling vs. $K$ (`results/serial_scaling_K.csv`, $N=11\text{M}, 30$ Iters):** `K=2` (`10.5133 s`, `31.39 M/s`) $\to$ `K=4` (`15.8274 s`, `20.85 M/s`) $\to$ `K=8` (`28.1074 s`, `11.74 M/s`) $\to$ `K=16` (`60.0651 s`, `5.49 M/s`) $\to$ **`K=32` (`112.5194 s`, `3750.65 ms/iter`, `2.93 M/s`)**.
 
-### B. Runtime Scaling vs. Cluster Count $K$ (Fixed $N = 597,638, d = 28, \text{Iterations} = 30$)
-| Clusters ($K$) | Distance Evals / Iter ($N \times K$) | Total Time ($30$ Iters) | Avg Time / Iter | Throughput |
-| ---: | ---: | ---: | ---: | ---: |
-| $2$ | $1,195,276$ | $0.2663\text{ s}$ | $8.88\text{ ms}$ | $67.34\text{ M pts/s}$ |
-| $4$ | $2,390,552$ | $0.4917\text{ s}$ | $16.39\text{ ms}$ | $36.46\text{ M pts/s}$ |
-| $8$ | $4,781,104$ | $0.8023\text{ s}$ | $26.74\text{ ms}$ | $22.35\text{ M pts/s}$ |
-| $16$ | $9,562,208$ | $1.4189\text{ s}$ | $47.30\text{ ms}$ | $12.64\text{ M pts/s}$ |
-| $32$ | $19,124,416$ | $2.6691\text{ s}$ | $88.97\text{ ms}$ | $6.72\text{ M pts/s}$ |
+### B. Pure MPI Strong & Weak Scaling (`results/mpi_strong_scaling.csv`, `results/mpi_weak_scaling.csv`)
+Strong scaling on all $N = 11,000,000$ rows ($d=28, K=8, 50$ iters):
 
----
+| Ranks $P$ | Points / Rank | Total Time | Comp (s) | Comm (s) | Comm % | Throughput | Speedup $S(P)$ | Efficiency $E(P)$ | Max Err / SSE |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 11,000,000 | 31.4583 s | 31.4576 | 0.0005 | 0.0% | 17.48 M/s | 1.00x | 100.0% | `0.000e+00` / `1.584590e+08` |
+| 2 | 5,500,000 | 14.4035 s | 14.2815 | 1.3279 | 9.2% | 38.19 M/s | 2.18x | 109.2% | `0.000e+00` / `1.584590e+08` |
+| 4 | 2,750,000 | 7.8956 s | 7.5634 | 1.2932 | 16.4% | 69.66 M/s | 3.98x | 99.6% | `0.000e+00` / `1.584590e+08` |
+| 8 | 1,375,000 | 3.9428 s | 3.8821 | 0.7755 | 19.7% | 139.49 M/s | 7.98x | 99.7% | `0.000e+00` / `1.584590e+08` |
+| 16 | 687,500 | 2.4039 s | 2.2922 | 0.7380 | 30.7% | 228.80 M/s | 13.09x | 81.8% | `0.000e+00` / `1.584590e+08` |
+| 32 | 343,750 | 1.3659 s | 1.2615 | 0.5703 | 41.8% | 402.68 M/s | 23.03x | 72.0% | `0.000e+00` / `1.584590e+08` |
+| **64** | **171,875** | **0.6211 s** | **0.6191** | **0.1323** | **21.3%** | **885.49 M/s** | **50.65x** | **79.1%** | **`0.000e+00` / `1.584590e+08`** |
 
-## 4. Step 2 Completed: Pure MPI Parallelization (`src/kmeans_mpi.cpp`)
+- **Weak Scaling ($N_0 = 200,000$ pts/rank, 30 iters, $P=1 \to 64$):** Scales from $200,000$ points (`0.2983 s`, `20.11 M/s`, `100.0%`) to $12,800,000$ points (`0.5491 s`, `699.36 M/s`, `54.3%` weak efficiency — a `34.8x` throughput increase).
+- **Packed vs. Separate `MPI_Allreduce`:** Packing all stats into 1 collective cuts $P=8$ wait time by $2.41\times$ (`1.6457 s` $\to$ `0.6824 s`, reducing total runtime from `4.8595 s` to `3.8170 s`) and yields the fastest packed run at $P=64$ (`0.6308 s` vs. `0.6579 s`).
 
-### A. Strong Scaling on UCI HIGGS ($N = 597,638, d = 28, K = 8, 50\text{ Iters}$)
-| MPI Ranks ($P$) | Points / Rank | Total Time (s) | Comp Time (s) | `MPI_Allreduce` Comm (s) | Comm % | Speedup $S(P)$ | Efficiency $E(P)$ | Max Centroid Error vs. Serial |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| $1$ | $597,638$ | $1.3101\text{ s}$ | $1.3100\text{ s}$ | $0.0000\text{ s}$ | $0.0\%$ | $1.00\times$ | $100.0\%$ | $4.977 \times 10^{-12}$ |
-| $2$ | $298,819$ | $0.6802\text{ s}$ | $0.6761\text{ s}$ | $0.0049\text{ s}$ | $0.7\%$ | $1.93\times$ | $96.3\%$ | $5.484 \times 10^{-12}$ |
-| $4$ | $149,409$ | $0.4031\text{ s}$ | $0.3983\text{ s}$ | $0.0108\text{ s}$ | $2.7\%$ | $3.25\times$ | $81.3\%$ | $5.810 \times 10^{-12}$ |
-| $8$ | $74,704$ | $0.4403\text{ s}$ | $0.3174\text{ s}$ | $0.1442\text{ s}$ | $32.8\%$ | $2.98\times$ | $37.2\%$ | $6.763 \times 10^{-12}$ |
+### C. Hybrid `MPI + OpenMP` Design & 72-Core NUMA Grid (`results/omp_design_choices.csv`, `results/hybrid_mpi_omp_grid.csv`)
+- **Accumulation & Schedule ($P=1, T=4, N=11\text{M}, K=8, 50$ iters):** Cache-padded `private` (`guided`: **`11.5415 s`**, `230.83 ms/iter`, `47.65 M/s`; `dynamic`: `11.5427 s`; `static`: `14.1680 s`; `private_standalone`: `14.6160 s`) outperforms `#pragma omp atomic` (`static`: `156.0935 s`, `3.52 M/s`) by **`13.52x`**, eliminating L1/L2 cache-line ping-pong.
+- **NUMA Socket Alignment ($72$ Cores):** Aligning one rank per socket (`P=2, T=36`: **`1.3244 s`**, `3.3%` comm, `22.14x` vs. `1x1`) cuts cross-socket pure OpenMP runtime (`P=1, T=72`: `2.0441 s`) by **`35.2%`**, while flat MPI (`P=72, T=1`) reaches **`0.6448 s`** (`45.48x` speedup vs. `1x1`, **`853.03 M pts/s`**, `76.13x` faster than 1-core `kmeans_serial` at `49.0870 s`).
 
-### B. Weak Scaling ($N_{\text{per\_rank}} = 200,000\text{ pts/rank}, d = 28, K = 8, 30\text{ Iters}$)
-| MPI Ranks ($P$) | Total Points ($N = 200\text{k} \times P$) | Total Time (s) | Comp Time (s) | Comm Time (s) | Comm % | Weak Efficiency $T(1)/T(P)$ | Aggregate Throughput |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| $1$ | $200,000$ | $0.2927\text{ s}$ | $0.2926\text{ s}$ | $0.0000\text{ s}$ | $0.0\%$ | $100.0\%$ | $20.50\text{ M pts/s}$ |
-| $2$ | $400,000$ | $0.2733\text{ s}$ | $0.2702\text{ s}$ | $0.0032\text{ s}$ | $1.2\%$ | $107.1\%$ | $43.91\text{ M pts/s}$ |
-| $4$ | $800,000$ | $0.3695\text{ s}$ | $0.3569\text{ s}$ | $0.0324\text{ s}$ | $8.8\%$ | $79.2\%$ | $64.94\text{ M pts/s}$ |
-| $8$ | $1,600,000$ | $0.5518\text{ s}$ | $0.4662\text{ s}$ | $0.1173\text{ s}$ | $21.2\%$ | $53.0\%$ | $86.98\text{ M pts/s}$ |
+### D. Hardware GPU Acceleration: Vanda NVIDIA A40 ($N=11\text{M}$) & Apple M5 Metal ($N=597,638$)
+- **Vanda `GN-A40-044` NVIDIA A40 (30 Iters, $N=11\text{M}$, `results/gpu_benchmark.csv`):**
+  - $K=8$: CUDA **`3.0461 s`** (`108.33 M/s`, **`5.70x`** vs. 1C `17.3726 s`, `1.68x` vs. 4C `5.1064 s`, `RMSE = 1.509e-12`, `SSE = 1.584590e+08`).
+  - $K=16$: CUDA **`5.7795 s`** (`57.10 M/s`, `5.66x` vs. 1C `32.7197 s`, **`1.75x`** vs. 4C `10.1117 s`, `RMSE = 1.521e-12`, `SSE = 1.441739e+08`).
+  - $K=32$: CUDA **`12.4475 s`** (`26.51 M/s`, `4.69x` vs. 1C `58.3357 s`, `1.29x` vs. 4C `16.0496 s`, `RMSE = 1.562e-12`, `SSE = 1.318415e+08`).
+- **Vanda 50-Iter Backend Comparison ($N=11\text{M}, K=8$, `kmeans_gpu_benchmark.o1563433`):** Native CUDA (`__shared__`, **`5.0759 s`**, **`108.36 M pts/s`**, **`9.67x`** vs. `49.0870 s` serial) beats OpenMP GPU target offload `-mp=gpu` (`15.7554 s`, `34.91 M pts/s`) by **`3.10x`**.
+- **Apple M5 Metal GPU (`results/gpu_benchmark_apple_metal.csv`, $N=597,638, 30$ iters):** `K=8`: `0.1189 s` (`4.76x` vs. 1C), `K=16`: `0.1444 s` (`6.57x`), `K=32`: `0.2090 s` (**`8.10x`** vs. 1C `1.6926 s`, `2.61x` vs. 4C `0.5456 s`, FP32 `RMSE <= 5.296e-04`).
 
 ---
 
-## 5. Step 3 Completed: Hybrid `MPI + OpenMP` Parallelization (`src/kmeans_omp.cpp`)
-
-### A. Parallel Design Decisions: Cache-Padded Thread-Private Accumulators vs. Atomic Updates
-In shared-memory OpenMP, multiple threads simultaneously accumulate $28$-dimensional vectors into $K=8$ cluster centroids. We implemented and benchmarked two accumulation designs plus three OpenMP loop schedules (`results/omp_design_choices.csv` at $P=1, T=4$ on UCI HIGGS):
-
-| Accumulation Strategy | OpenMP Schedule | Total Time ($50$ Iters) | Avg Time / Iter | Throughput | Speedup vs. Atomic | Max Error vs. Serial |
-| :--- | :---: | ---: | ---: | ---: | ---: | ---: |
-| **Cache-Padded Thread-Private (`private`)** | `static` | $0.3265\text{ s}$ | $6.53\text{ ms}$ | $91.51\text{ M pts/s}$ | **$5.65\times$** | $5.810 \times 10^{-12}$ |
-| **Cache-Padded Thread-Private (`private`)** | `dynamic,1024` | $0.3054\text{ s}$ | $6.11\text{ ms}$ | $97.85\text{ M pts/s}$ | **$6.04\times$** | $5.810 \times 10^{-12}$ |
-| **Cache-Padded Thread-Private (`private`)** | `guided` | **$0.2947\text{ s}$** | **$5.89\text{ ms}$** | **$101.40\text{ M pts/s}$** | **$6.26\times$** | $5.813 \times 10^{-12}$ |
-| **Shared Atomic Updates (`#pragma omp atomic`)** | `static` | $1.8447\text{ s}$ | $36.89\text{ ms}$ | $16.20\text{ M pts/s}$ | $1.00\times$ | $4.982 \times 10^{-12}$ |
-
-- **Why Thread-Private Wins by $6.26\times$:** Using `#pragma omp atomic` forces all threads to execute $597,638 \times 29 = 17.3\text{ million}$ atomic read-modify-write operations per iteration on the same $224$ memory addresses, causing severe L1/L2 cache-line invalidation ("cache-line ping-pong"). Allocating 64-byte aligned thread-private buffers (`stride_sums`) eliminates all lock contention during the loop and reduces deterministically across threads at the end of each iteration.
-
-### B. Hybrid MPI Ranks ($P$) $\times$ OpenMP Threads ($T$) Trade-Off (`results/hybrid_mpi_omp_grid.csv`)
-| Total Cores ($P \times T$) | MPI Ranks ($P$) | OMP Threads ($T$) | Total Time (s) | Comp Time (s) | `MPI_Allreduce` Comm (s) | Speedup $S(P,T)$ | Efficiency | Max Error vs. Serial |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| **1** | $1$ | $1$ | $0.9088\text{ s}$ | $0.9087\text{ s}$ | $0.0000\text{ s}$ | $1.00\times$ | $100.0\%$ | $4.98 \times 10^{-12}$ |
-| **2** | $1$ | $2$ | $0.4890\text{ s}$ | $0.4889\text{ s}$ | $0.0000\text{ s}$ | $1.86\times$ | $92.9\%$ | $5.48 \times 10^{-12}$ |
-| **2** | $2$ | $1$ | $0.4658\text{ s}$ | $0.4590\text{ s}$ | $0.0119\text{ s}$ | $1.95\times$ | $97.6\%$ | $5.48 \times 10^{-12}$ |
-| **4** | $1$ | $4$ | $0.3047\text{ s}$ | $0.3046\text{ s}$ | $0.0000\text{ s}$ | $2.98\times$ | $74.6\%$ | $5.81 \times 10^{-12}$ |
-| **4** | $2$ | $2$ | $0.2972\text{ s}$ | $0.2943\text{ s}$ | $0.0112\text{ s}$ | $3.06\times$ | $76.4\%$ | $5.81 \times 10^{-12}$ |
-| **4** | $4$ | $1$ | $0.2943\text{ s}$ | $0.2853\text{ s}$ | $0.0136\text{ s}$ | $3.09\times$ | $77.2\%$ | $5.81 \times 10^{-12}$ |
-| **8** | **$1$** | **$8$** | **$0.2500\text{ s}$** | $0.2498\text{ s}$ | **$0.0000\text{ s}$** | **$3.64\times$** | **$45.4\%$** | $6.76 \times 10^{-12}$ |
-| **8** | $2$ | $4$ | $0.2661\text{ s}$ | $0.2631\text{ s}$ | $0.0096\text{ s}$ | $3.42\times$ | $42.7\%$ | $6.76 \times 10^{-12}$ |
-| **8** | $4$ | $2$ | $0.2660\text{ s}$ | $0.2555\text{ s}$ | $0.0200\text{ s}$ | $3.42\times$ | $42.7\%$ | $6.76 \times 10^{-12}$ |
-| **8** | $8$ | $1$ | $0.2624\text{ s}$ | $0.1969\text{ s}$ | $0.0711\text{ s}$ | $3.46\times$ | $43.3\%$ | $6.76 \times 10^{-12}$ |
-
-- **Key Hybrid Insight:** At $8$ total cores, Pure MPI (`P=8, T=1`) spends **$0.0711\text{ s}$ ($27.1\%$)** in `MPI_Allreduce` communication/synchronization. Switching to Hybrid (`P=2, T=4` or `P=1, T=8`) cuts `MPI_Allreduce` overhead by **$7.4\times$** (down to $0.0096\text{ s}$ or $0.0000\text{ s}$) and achieves the fastest overall CPU runtime (**$0.2500\text{ s}$, $3.64\times$ speedup**).
-
----
-
-## 6. Step 4 Completed: GPU Acceleration (`MPI + CUDA` & `MPI + Metal GPU`)
-
-Per **Lecture 12 Slide 37** (*"If you choose X=OpenMP, then you also have to test on at least one GPU"*), we implemented three GPU acceleration paths:
-1. **`src/kmeans_cuda.cu` (Hybrid `MPI + CUDA` for Vanda NVIDIA GPUs):** Caches centroids in on-chip `__shared__` memory (`s_centroids`), accumulates partial sums in block shared memory (`s_sums`), and flushes once per thread block to global memory before `MPI_Allreduce`.
-2. **`src/kmeans_omp.cpp -g` (OpenMP Target GPU Offload):** Uses `#pragma omp target teams distribute parallel for` for NVIDIA `nvc++ -mp=gpu` compilation on Vanda.
-3. **`src/kmeans_metal_gpu.mm` (Hybrid `MPI + Apple Metal GPU Shader` for Apple M5 GPU):** Uses on-chip `threadgroup float s_centroids[1024]` shared memory and zero-copy Unified Shared Memory (`MTLResourceStorageModeShared`) to offload the $\mathcal{O}(N \cdot K \cdot d)$ distance evaluations to the Apple M5 GPU.
-
-### Hardware GPU Benchmark on UCI HIGGS ($N = 597,638, d = 28, 30\text{ Iters}$, `results/gpu_benchmark.csv`)
-| Clusters ($K$) | Distance Evals / Iter | 1-Core CPU (s) | 4-Core OpenMP (s) | Apple M5 GPU Total (s) | GPU Kernel Time (s) | GPU Speedup vs. 1-Core CPU | GPU Speedup vs. 4-Core OMP |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| **$8$** | $4.78\text{ M}$ | $0.5621\text{ s}$ | $0.1871\text{ s}$ | $0.2022\text{ s}$ | $0.1489\text{ s}$ | **$2.78\times$** | $0.93\times$ |
-| **$16$** | $9.56\text{ M}$ | $0.9243\text{ s}$ | $0.3100\text{ s}$ | **$0.1459\text{ s}$** | **$0.0945\text{ s}$** | **$6.34\times$** | **$2.12\times$** |
-| **$32$** | $19.12\text{ M}$ | $1.6754\text{ s}$ | $0.5563\text{ s}$ | **$0.2070\text{ s}$** | **$0.1557\text{ s}$** | **$8.09\times$** | **$2.69\times$** |
-
-- **GPU Arithmetic Intensity Analysis:** At small cluster counts ($K=8$), GPU kernel dispatch overhead makes 4-core CPU OpenMP ($0.1871\text{ s}$) and M5 GPU ($0.2022\text{ s}$) nearly equal. As arithmetic intensity increases to $K=16$ and $K=32$ ($19.12\text{ million}$ 28D distance evaluations per iteration), the GPU's massive SIMD parallelism and on-chip `threadgroup` centroid cache dominate, reaching an **$8.09\times$ speedup over 1-core CPU** and **$2.69\times$ speedup over 4-core OpenMP**!
-
----
-
-## 7. Quickstart: Building & Running All Implementations
+## 4. Quickstart: Reproducing Everything
 
 ```bash
-# 1. Stream and clean the UCI HIGGS dataset (ID #280) into data/higgs_clean.csv
-python3 scripts/prepare_higgs_data.py
+# 1. Extract all 11,000,000 HIGGS rows into data/higgs_clean.csv & data/higgs_labels.txt
+python3 scripts/prepare_higgs_data.py --all
 
-# 2. Compile Serial, Pure MPI, Hybrid MPI+OpenMP, and Metal GPU binaries
-make
+# 2. Build all targets & verify 16/16 correctness tests
+make all
+python3 scripts/test_correctness.py
 
-# 3. Run Hybrid MPI+OpenMP (e.g. 2 MPI ranks x 4 OpenMP threads, guided schedule, padded private accumulators)
-mpirun -np 2 ./bin/kmeans_omp -f data/higgs_clean.csv -r results/centroids_serial.txt -threads 4 -a private -s guided -k 8 -m 50
+# 3. Submit full 11M Vanda HPC CPU (72 cores) & GPU (NVIDIA A40) batch jobs
+qsub scripts/vanda_cpu_benchmarks.pbs
+qsub scripts/vanda_gpu_benchmarks.pbs
 
-# 4. Run Hybrid MPI + GPU (Apple Metal Compute Shader on M5 GPU)
-mpirun -np 1 ./bin/kmeans_metal_gpu -f data/higgs_clean.csv -r results/centroids_serial.txt -threads 4 -k 32 -m 30
-
-# 5. Reproduce all Hybrid OpenMP & GPU benchmark CSV tables
-python3 scripts/run_hybrid_and_gpu_benchmarks.py
-
-# 6. Submit Vanda HPC 256-Core MPI & 72-Core/NVIDIA GPU jobs
-qsub scripts/vanda_mpi_256cores.pbs
-qsub scripts/vanda_hybrid_gpu.pbs
+# 4. Regenerate all 7 figures and compile the PDF report locally
+/tmp/report_venv/bin/python3 scripts/generate_report_figures.py
+typst compile report/DSA5208_Project3_Report.typ DSA5208_Project3_Report.pdf
 ```

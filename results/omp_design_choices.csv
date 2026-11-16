@@ -1,6 +1,6 @@
 P,T,accum_mode,schedule,total_time_s,avg_iter_ms,throughput_mpts_s,max_abs_err,final_sse
-1,4,private,static,0.3926,7.85,76.12,5.810e-12,8.742847e+06
-1,4,private,dynamic,0.3042,6.08,98.22,5.810e-12,8.742847e+06
-1,4,private,guided,0.3018,6.04,99.03,5.812e-12,8.742847e+06
-1,4,atomic,static,1.8711,37.42,15.97,4.983e-12,8.742847e+06
-1,4,private_standalone,static,0.3495,6.99,85.51,5.810e-12,8.742847e+06
+1,4,private,static,14.1680,283.36,38.82,0.000e+00,1.584590e+08
+1,4,private,dynamic,11.5427,230.85,47.65,0.000e+00,1.584590e+08
+1,4,private,guided,11.5415,230.83,47.65,0.000e+00,1.584590e+08
+1,4,atomic,static,156.0935,3121.87,3.52,0.000e+00,1.584590e+08
+1,4,private_standalone,static,14.6160,292.32,37.63,0.000e+00,1.584590e+08
