@@ -51,8 +51,11 @@ def run_omp(np, threads, accum="private", sched="static", K=8, iters=50,
         cmd.extend(["-o", out_file])
 
     run_env = os.environ.copy()
-    run_env.setdefault("OMP_PROC_BIND", "close")
-    run_env.setdefault("OMP_PLACES", "cores")
+    # Pin threads only for single-rank OpenMP runs; with --bind-to none and P>1 ranks,
+    # OMP_PROC_BIND=close causes independent MPI ranks to pile onto overlapping low-index cores.
+    if np == 1 and not standalone:
+        run_env.setdefault("OMP_PROC_BIND", "close")
+        run_env.setdefault("OMP_PLACES", "cores")
     proc = subprocess.run(cmd, capture_output=True, text=True, check=True, env=run_env)
     out = proc.stdout
 
