@@ -163,7 +163,7 @@ def generate_fig2_mpi_strong_scaling():
     ax2.set_yticks(P_meas)
     ax2.get_xaxis().set_major_formatter(ScalarFormatter())
     ax2.get_yaxis().set_major_formatter(ScalarFormatter())
-    ax2.set_title("(b) Pure MPI Strong Scaling Speedup & Efficiency (Log-Log)\n[50.65x Speedup (79.1% Eff) at P=64 | 885.49 M pts/sec]")
+    ax2.set_title("(b) Pure MPI Strong Scaling Speedup & Efficiency (Log-Log)\n[41.40x Speedup (64.7% Eff) at P=64 | 849.74 M pts/sec]")
     ax2.set_xlabel("Number of MPI Processes / Physical Cores (P) [Log2 Scale]")
     ax2.set_ylabel("Parallel Speedup S(P) = T(1) / T(P) [Log2 Scale]")
     ax2.set_xlim(0.75, 92)
@@ -232,7 +232,7 @@ def generate_fig3_mpi_weak_scaling():
     ax2.set_xticks(P_meas)
     ax2.get_xaxis().set_major_formatter(ScalarFormatter())
     ax2.get_yaxis().set_major_formatter(ScalarFormatter())
-    ax2.set_title("(b) Pure MPI Weak Scaling Aggregate Throughput (Log-Log)\n[Scales from 20.11 M/s (P=1) to 699.36 M/s (P=64, N=12.8M)]")
+    ax2.set_title("(b) Pure MPI Weak Scaling Aggregate Throughput (Log-Log)\n[Scales from 22.28 M/s (P=1) to 797.72 M/s (P=64, N=12.8M)]")
     ax2.set_xlabel("Number of MPI Processes (P) [Log2 Scale]")
     ax2.set_ylabel("Throughput (Million Points / Sec) [Log2 Scale]")
     ax2.set_xlim(0.75, 90)
@@ -271,7 +271,7 @@ def generate_fig4_omp_design_choices():
                      textcoords="offset points", xytext=(0, 6),
                      ha="center", fontsize=7.6, fontweight="bold")
 
-    ax1.set_title("(a) OpenMP Accumulation & Schedule Runtime (Log Scale)\n[Vanda CN-111: P = 1, T = 4 Threads, N = 11,000,000, K = 8, 50 Iters]")
+    ax1.set_title("(a) OpenMP Accumulation & Schedule Runtime (Log Scale)\n[Vanda CN-048: P = 1, T = 4 Threads, N = 11,000,000, K = 8, 50 Iters]")
     ax1.set_ylabel("Total Execution Time (seconds) [Log Scale]")
     ax1.set_ylim(5.0, 420.0)
     ax1.tick_params(axis="x", labelsize=8.0)
@@ -286,7 +286,7 @@ def generate_fig4_omp_design_choices():
                      textcoords="offset points", xytext=(0, 6),
                      ha="center", fontsize=7.6, fontweight="bold")
 
-    ax2.set_title("(b) OpenMP Throughput Comparison (Log Scale)\n[Cache-Padded Private Buffers Beat Atomic Contention by 13.54x]")
+    ax2.set_title("(b) OpenMP Throughput Comparison (Log Scale)\n[Cache-Padded Private Buffers Beat Atomic Contention by 10.00x]")
     ax2.set_ylabel("Throughput (Million Points / Sec) [Log Scale]")
     ax2.set_ylim(1.8, 120.0)
     ax2.tick_params(axis="x", labelsize=8.0)
@@ -327,7 +327,7 @@ def generate_fig5_hybrid_mpi_omp_grid():
     ax1.set_xscale("log", base=2)
     ax1.set_xticks([1, 8, 16, 36, 72])
     ax1.get_xaxis().set_major_formatter(ScalarFormatter())
-    ax1.set_title("(a) Hybrid MPI x OpenMP Runtime vs. Active Cores (Log-Log)\n[Vanda CN-111: N = 11,000,000, d = 28, K = 8, 50 Iterations]")
+    ax1.set_title("(a) Hybrid MPI x OpenMP Runtime vs. Active Cores (Log-Log)\n[Vanda CN-048: N = 11,000,000, d = 28, K = 8, 50 Iterations]")
     ax1.set_xlabel("Total Active CPU Cores (C = P x T) [Log2 Scale]")
     ax1.set_ylabel("Total Execution Time (seconds) [Log10 Scale]")
     ax1.set_xlim(0.75, 105)
@@ -355,7 +355,7 @@ def generate_fig5_hybrid_mpi_omp_grid():
 
     ax2.set_xticks(x)
     ax2.set_xticklabels(cfg_labels)
-    ax2.set_title("(b) Full 72-Core Topology Trade-Off (P x T = 72 on N=11M)\n[NUMA 2x36 Cuts Cross-Socket OMP Bottleneck; 72x1 Hits 0.6448s]")
+    ax2.set_title("(b) Full 72-Core Topology Trade-Off (P x T = 72 on N=11M)\n[Pinned 1x72 Hits 1.4163s; Flat MPI 72x1 Hits 0.6243s]")
     ax2.set_xlabel("Topology Configuration (MPI Ranks P x OpenMP Threads T)")
     ax2.set_ylabel("Total Execution Time (seconds)")
     ax2.set_ylim(0, 2.55)
@@ -410,7 +410,7 @@ def generate_fig6_gpu_scaling():
         "OMP GPU Offload\n(A40 -mp=gpu)",
         "Native CUDA\n(NVIDIA A40)"
     ]
-    t_50 = [49.0870, 29.3235, 15.7554, 5.0759]
+    t_50 = [47.1513, 30.4406, 16.9227, 5.0769]
     b_colors = ["#7f8c8d", "#2874a6", "#d35400", "#117864"]
 
     bars = ax2.bar(backends, t_50, color=b_colors, width=0.52, edgecolor="black", linewidth=0.8)
@@ -422,7 +422,7 @@ def generate_fig6_gpu_scaling():
                      textcoords="offset points", xytext=(0, 6),
                      ha="center", fontsize=7.6, fontweight="bold")
 
-    ax2.set_title("(b) 50-Iteration Runtime Across Vanda Backends (Log Scale)\n[Full N = 11,000,000, K = 8: Native CUDA Hits 108.36 M pts/s]")
+    ax2.set_title("(b) 50-Iteration Runtime Across Vanda Backends (Log Scale)\n[Full N = 11,000,000, K = 8: Native CUDA Hits 108.33 M pts/s]")
     ax2.set_ylabel("50-Iteration Runtime (seconds) [Log Scale]")
     ax2.set_ylim(2.5, 120.0)
     ax2.tick_params(axis="x", labelsize=8.2)
