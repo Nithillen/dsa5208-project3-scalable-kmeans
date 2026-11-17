@@ -119,15 +119,30 @@ Strong scaling on all $N = 11,000,000$ rows ($d=28, K=8, 50$ iters):
 # 1. Extract all 11,000,000 HIGGS rows into data/higgs_clean.csv & data/higgs_labels.txt
 python3 scripts/prepare_higgs_data.py --all
 
-# 2. Build all targets & verify 16/16 correctness tests
+# 2. Build all targets & verify correctness tests (13/13 on Linux CPU; 16/16 on Apple Silicon macOS)
+module load nvhpc-hpcx-cuda12/26.1 2>/dev/null || true   # Required on NUS Vanda
 make all
 python3 scripts/test_correctness.py
 
 # 3. Submit full 11M Vanda HPC CPU (72 cores) & GPU (NVIDIA A40) batch jobs
-qsub scripts/vanda_cpu_benchmarks.pbs
-qsub scripts/vanda_gpu_benchmarks.pbs
+#    (Pass -P personal-$USER to use your own Vanda project allocation)
+qsub -P personal-$USER scripts/vanda_cpu_benchmarks.pbs
+qsub -P personal-$USER scripts/vanda_gpu_benchmarks.pbs
 
 # 4. Regenerate all 7 figures and compile the PDF report locally (requires matplotlib)
 python3 scripts/generate_report_figures.py
 typst compile report/DSA5208_Project3_Report.typ DSA5208_Project3_Report.pdf
+```
+
+### Direct Single-Binary CLI Usage (Optional)
+
+```bash
+# 1-core Serial baseline on 100k synthetic points (writes reference to /tmp):
+./bin/kmeans_serial -s -n 100000 -d 28 -k 8 -m 30 -o /tmp/kmeans_serial_cli.txt
+
+# Pure MPI on 4 ranks with packed Allreduce (-p), validated against /tmp reference:
+mpirun -np 4 ./bin/kmeans_mpi -s -n 100000 -d 28 -k 8 -m 30 -p -r /tmp/kmeans_serial_cli.txt -o /tmp/kmeans_mpi_cli.txt
+
+# Standalone OpenMP with 4 threads, validated against /tmp reference:
+./bin/kmeans_omp_standalone -n 100000 -d 28 -k 8 -m 30 -threads 4 -r /tmp/kmeans_serial_cli.txt -o /tmp/kmeans_omp_cli.txt
 ```
