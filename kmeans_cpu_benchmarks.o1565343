@@ -1,0 +1,244 @@
+==================================================================
+  DSA5208 Project 3: Vanda 72-Core CPU Benchmark Suite (11M Rows) 
+  Host Node : CN-048                                         
+  Date      : Mon Nov 16 05:54:20 PM +08 2026                                             
+==================================================================
+CPU(s):                               72
+Model name:                           Intel(R) Xeon(R) Platinum 8452Y
+Thread(s) per core:                   1
+Socket(s):                            2
+NUMA node(s):                         2
+NUMA node0 CPU(s):                    0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,52,54,56,58,60,62,64,66,68,70
+NUMA node1 CPU(s):                    1,3,5,7,9,11,13,15,17,19,21,23,25,27,29,31,33,35,37,39,41,43,45,47,49,51,53,55,57,59,61,63,65,67,69,71
+  11000000 data/higgs_clean.csv
+  11000000 data/higgs_labels.txt
+  22000000 total
+[Step 1] Compiling Serial, MPI, Standalone OpenMP, and Hybrid MPI+OpenMP...
+[Step 2] Running automated correctness & SSE validation test suite...
+==========================================================================================
+  DSA5208 Automated Correctness & Objective (SSE/WCSS) Verification Suite
+==========================================================================================
+
+[Suite 1] Synthetic Data Initialization & Convergence Parity (N=20,000, d=28, K=8)
+  [PASS] Pure MPI (P=1, separate Allreduce)         | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 5.375590e+07 (RelDiff: 0.000e+00)
+  [PASS] Pure MPI (P=4, separate Allreduce)         | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 5.375590e+07 (RelDiff: 0.000e+00)
+  [PASS] Pure MPI (P=4, packed 1-call Allreduce)    | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 5.375590e+07 (RelDiff: 0.000e+00)
+  [PASS] Standalone OpenMP (T=4, no MPI)            | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 5.375590e+07 (RelDiff: 0.000e+00)
+  [PASS] Hybrid MPI+OpenMP (P=2, T=2, private)      | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 5.375590e+07 (RelDiff: 0.000e+00)
+  [PASS] Hybrid MPI+OpenMP (P=2, T=2, packed)       | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 5.375590e+07 (RelDiff: 0.000e+00)
+  [PASS] Hybrid MPI+OpenMP (P=2, T=2, atomic)       | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 5.375590e+07 (RelDiff: 0.000e+00)
+
+[Suite 2] Real UCI HIGGS Dataset Parity (N=50,000, d=28, K=8)
+  [PASS] Pure MPI (P=4, Scatterv, Separate)         | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 7.216756e+05 (RelDiff: 0.000e+00)
+  [PASS] Pure MPI (P=4, Scatterv, Packed)           | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 7.216756e+05 (RelDiff: 0.000e+00)
+  [PASS] Pure MPI (P=4, Parallel I/O, Packed)       | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 7.216756e+05 (RelDiff: 0.000e+00)
+  [PASS] Standalone OpenMP (T=4, HIGGS)             | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 7.216756e+05 (RelDiff: 0.000e+00)
+  [PASS] Hybrid MPI+OpenMP (P=2, T=2, Parallel I/O) | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 7.216756e+05 (RelDiff: 0.000e+00)
+
+[Suite 3] Shared-Memory Bounds Guard Test (K=40, d=32 -> K*d = 1280 > 1024)
+  [PASS] Pure MPI (K=40, d=32, K*d=1280)            | MaxErr: 0.000e+00 | RMSE: 0.000e+00 | SSE: 6.565377e+07 (RelDiff: 0.000e+00)
+
+==========================================================================================
+  ALL CORRECTNESS, INITIALIZATION, AND SSE/WCSS VALIDATION TESTS PASSED 100%!
+==========================================================================================
+[Step 3] Running Serial Baseline & Complexity Scaling on full 11M HIGGS dataset...
+==================================================================
+  1-Node Serial Scaling Benchmark on UCI HIGGS (N=11,000,000)
+==================================================================
+========================================================
+  Serial K-Means (Lloyd's Algorithm) - HIGGS Dataset    
+========================================================
+Loaded 11000000 data points with 28 dimensions (308000000 floats) from /nfs/home/svu/amitejsingh.datta/dsa5208-kmeans-cpu-verification/data/higgs_clean.csv
+CSV load time: 47.95 seconds.
+Running K-Means:
+  Points (N)    : 11000000
+  Features (d)  : 28
+  Total Floats  : 308000000
+  Clusters (K)  : 8
+  Max Iters     : 50
+  Tolerance     : 0.00
+
+Iteration  1 | Max Centroid Shift: 3.1182e+00 | SSE: 2.530096e+08 | Time: 1126.71 ms
+Iteration  2 | Max Centroid Shift: 8.8404e-01 | SSE: 1.713936e+08 | Time: 937.07 ms
+Iteration  3 | Max Centroid Shift: 5.5180e-01 | SSE: 1.652464e+08 | Time: 948.26 ms
+Iteration  4 | Max Centroid Shift: 3.6977e-01 | SSE: 1.627209e+08 | Time: 937.92 ms
+Iteration  5 | Max Centroid Shift: 3.1739e-01 | SSE: 1.614013e+08 | Time: 940.71 ms
+Iteration  6 | Max Centroid Shift: 2.8632e-01 | SSE: 1.605948e+08 | Time: 938.14 ms
+Iteration  7 | Max Centroid Shift: 2.2116e-01 | SSE: 1.600641e+08 | Time: 936.84 ms
+Iteration  8 | Max Centroid Shift: 1.6411e-01 | SSE: 1.597692e+08 | Time: 936.66 ms
+Iteration  9 | Max Centroid Shift: 1.1414e-01 | SSE: 1.596093e+08 | Time: 941.09 ms
+Iteration 10 | Max Centroid Shift: 7.2349e-02 | SSE: 1.595238e+08 | Time: 938.45 ms
+Iteration 11 | Max Centroid Shift: 6.1366e-02 | SSE: 1.594759e+08 | Time: 937.24 ms
+Iteration 12 | Max Centroid Shift: 6.0181e-02 | SSE: 1.594417e+08 | Time: 940.22 ms
+Iteration 13 | Max Centroid Shift: 7.7448e-02 | SSE: 1.594072e+08 | Time: 939.73 ms
+Iteration 14 | Max Centroid Shift: 1.0810e-01 | SSE: 1.593614e+08 | Time: 939.21 ms
+Iteration 15 | Max Centroid Shift: 1.6160e-01 | SSE: 1.592866e+08 | Time: 938.51 ms
+Iteration 16 | Max Centroid Shift: 2.4571e-01 | SSE: 1.591390e+08 | Time: 937.78 ms
+Iteration 17 | Max Centroid Shift: 2.4961e-01 | SSE: 1.588734e+08 | Time: 940.07 ms
+Iteration 18 | Max Centroid Shift: 1.6265e-01 | SSE: 1.586931e+08 | Time: 939.26 ms
+Iteration 19 | Max Centroid Shift: 1.9828e-01 | SSE: 1.586037e+08 | Time: 938.94 ms
+Iteration 20 | Max Centroid Shift: 1.3463e-01 | SSE: 1.584914e+08 | Time: 940.26 ms
+Iteration 21 | Max Centroid Shift: 1.5809e-02 | SSE: 1.584609e+08 | Time: 936.80 ms
+Iteration 22 | Max Centroid Shift: 5.7714e-03 | SSE: 1.584596e+08 | Time: 938.43 ms
+Iteration 23 | Max Centroid Shift: 3.6741e-03 | SSE: 1.584593e+08 | Time: 939.84 ms
+Iteration 24 | Max Centroid Shift: 2.6551e-03 | SSE: 1.584591e+08 | Time: 939.77 ms
+Iteration 25 | Max Centroid Shift: 2.0212e-03 | SSE: 1.584591e+08 | Time: 940.43 ms
+Iteration 26 | Max Centroid Shift: 1.5799e-03 | SSE: 1.584590e+08 | Time: 939.80 ms
+Iteration 27 | Max Centroid Shift: 1.2218e-03 | SSE: 1.584590e+08 | Time: 937.79 ms
+Iteration 28 | Max Centroid Shift: 9.7790e-04 | SSE: 1.584590e+08 | Time: 939.11 ms
+Iteration 29 | Max Centroid Shift: 7.4595e-04 | SSE: 1.584590e+08 | Time: 938.83 ms
+Iteration 30 | Max Centroid Shift: 6.1131e-04 | SSE: 1.584590e+08 | Time: 938.97 ms
+Iteration 31 | Max Centroid Shift: 4.7332e-04 | SSE: 1.584590e+08 | Time: 938.78 ms
+Iteration 32 | Max Centroid Shift: 3.7415e-04 | SSE: 1.584590e+08 | Time: 939.79 ms
+Iteration 33 | Max Centroid Shift: 2.9609e-04 | SSE: 1.584590e+08 | Time: 937.26 ms
+Iteration 34 | Max Centroid Shift: 2.1459e-04 | SSE: 1.584590e+08 | Time: 938.59 ms
+Iteration 35 | Max Centroid Shift: 1.7994e-04 | SSE: 1.584590e+08 | Time: 940.88 ms
+Iteration 36 | Max Centroid Shift: 1.3821e-04 | SSE: 1.584590e+08 | Time: 939.19 ms
+Iteration 37 | Max Centroid Shift: 1.0571e-04 | SSE: 1.584590e+08 | Time: 940.67 ms
+Iteration 38 | Max Centroid Shift: 7.9840e-05 | SSE: 1.584590e+08 | Time: 938.93 ms
+Iteration 39 | Max Centroid Shift: 5.4622e-05 | SSE: 1.584590e+08 | Time: 939.30 ms
+Iteration 40 | Max Centroid Shift: 3.7975e-05 | SSE: 1.584590e+08 | Time: 939.33 ms
+Iteration 41 | Max Centroid Shift: 2.7815e-05 | SSE: 1.584590e+08 | Time: 939.67 ms
+Iteration 42 | Max Centroid Shift: 2.4095e-05 | SSE: 1.584590e+08 | Time: 939.75 ms
+Iteration 43 | Max Centroid Shift: 2.0162e-05 | SSE: 1.584590e+08 | Time: 939.66 ms
+Iteration 44 | Max Centroid Shift: 2.0500e-05 | SSE: 1.584590e+08 | Time: 940.31 ms
+Iteration 45 | Max Centroid Shift: 1.3403e-05 | SSE: 1.584590e+08 | Time: 937.99 ms
+Iteration 46 | Max Centroid Shift: 1.6001e-05 | SSE: 1.584590e+08 | Time: 938.29 ms
+Iteration 47 | Max Centroid Shift: 9.9723e-06 | SSE: 1.584590e+08 | Time: 939.86 ms
+Iteration 48 | Max Centroid Shift: 9.0725e-06 | SSE: 1.584590e+08 | Time: 939.88 ms
+Iteration 49 | Max Centroid Shift: 8.1402e-06 | SSE: 1.584590e+08 | Time: 940.80 ms
+Iteration 50 | Max Centroid Shift: 6.7086e-06 | SSE: 1.584590e+08 | Time: 939.25 ms
+
+================ Benchmark Summary ================
+Total Iterations : 50 (crossed tol=1e-5 at iter 47)
+Total Time       : 47.1513 seconds
+Avg Time/Iter    : 943.03 ms
+Throughput       : 11.66 M points/sec
+Final SSE (WCSS) : 1.584590e+08
+===================================================
+
+================ HIGGS Boson Physical Cluster Analysis ================
+Cluster |   Events | Signal% | Lepton pT |   MET |  m_bb | m_wbb | m_wwbb
+-----------------------------------------------------------------------
+   C 1  |  1560788 |  53.90% |     0.990 | 1.015 | 0.784 | 0.982 |  0.957
+   C 2  |  1729399 |  52.77% |     0.990 | 0.990 | 1.120 | 1.056 |  0.950
+   C 3  |  1120799 |  52.57% |     0.992 | 1.008 | 0.903 | 1.014 |  0.966
+   C 4  |  1732201 |  52.64% |     0.990 | 0.989 | 1.120 | 1.056 |  0.950
+   C 5  |  1121982 |  52.46% |     0.993 | 1.008 | 0.905 | 1.014 |  0.967
+   C 6  |   923472 |  49.72% |     1.007 | 1.039 | 0.754 | 0.992 |  0.983
+   C 7  |  1263796 |  57.56% |     0.983 | 0.975 | 0.927 | 1.042 |  0.952
+   C 8  |  1547563 |  51.62% |     0.992 | 0.984 | 1.103 | 1.079 |  0.969
+=======================================================================
+
+Final centroids saved to /nfs/home/svu/amitejsingh.datta/dsa5208-kmeans-cpu-verification/results/centroids_serial.txt for validation.
+
+
+[A] Varying Problem Size N (Fixed K=8, d=28, Iterations=30):
+  Points (N) |   Total Floats | Total Time (s) | Avg Iter (ms) | Throughput (M pts/s)
+-----------------------------------------------------------------------------------
+     100,000 |      2,800,000 |         0.4091 |         13.64 |                 7.33
+     500,000 |     14,000,000 |         1.2828 |         42.76 |                11.69
+   1,000,000 |     28,000,000 |         3.7381 |        124.60 |                 8.03
+   2,500,000 |     70,000,000 |         8.0281 |        267.60 |                 9.34
+   5,000,000 |    140,000,000 |        14.7397 |        491.32 |                10.18
+  11,000,000 |    308,000,000 |        30.0148 |       1000.49 |                10.99
+
+[B] Varying Cluster Count K (Fixed N=11,000,000, d=28, Iterations=30):
+Clusters (K) | Dist Evals/Iter | Total Time (s) | Avg Iter (ms) | Throughput (M pts/s)
+------------------------------------------------------------------------------------
+           2 |      22,000,000 |        10.5269 |        350.90 |                31.35
+           4 |      44,000,000 |        15.8202 |        527.34 |                20.86
+           8 |      88,000,000 |        28.1127 |        937.09 |                11.74
+          16 |     176,000,000 |        60.5340 |       2017.80 |                 5.45
+          32 |     352,000,000 |       113.1340 |       3771.13 |                 2.92
+
+Saved benchmark tables to results/serial_scaling_N.csv, results/serial_scaling_K.csv, and results/centroids_serial.txt.
+[Step 4] Running Pure MPI Strong, Weak & Allreduce Scaling on Vanda physical cores...
+========================================================================================
+  Step 2A: Pure MPI Strong Scaling on UCI HIGGS Dataset (N=11,000,000, d=28, K=8, 50 Iters)
+========================================================================================
+Ranks (P) | Total (s) | Comp (s) | Comm (s) | Comm % | Speedup | Efficiency |     Final SSE |    Max Err
+----------------------------------------------------------------------------------------------------------
+        1 |   26.7964 |  26.7955 |   0.0006 |   0.0% |   1.00x |     100.0% |  1.584590e+08 |  0.000e+00
+        2 |   13.8943 |  13.3829 |   0.6830 |   4.9% |   1.93x |      96.4% |  1.584590e+08 |  0.000e+00
+        4 |    7.3715 |   7.3041 |   0.4959 |   6.7% |   3.64x |      90.9% |  1.584590e+08 |  0.000e+00
+        8 |    4.6739 |   4.5584 |   1.5139 |  32.4% |   5.73x |      71.7% |  1.584590e+08 |  0.000e+00
+       16 |    2.2648 |   2.1407 |   0.6844 |  30.2% |  11.83x |      73.9% |  1.584590e+08 |  0.000e+00
+       32 |    1.4536 |   1.3135 |   0.6572 |  45.2% |  18.43x |      57.6% |  1.584590e+08 |  0.000e+00
+       64 |    0.6473 |   0.6413 |   0.1629 |  25.2% |  41.40x |      64.7% |  1.584590e+08 |  0.000e+00
+
+========================================================================================
+  Step 2B: Separate vs. Packed Single-Call MPI_Allreduce Benchmark
+========================================================================================
+  P=  1 | Mode=separate | Total=24.9599s | Comm=0.0004s (0.0%) | SSE=1.584590e+08
+  P=  1 | Mode=packed   | Total=24.7856s | Comm=0.0005s (0.0%) | SSE=1.584590e+08
+  P=  2 | Mode=separate | Total=13.1221s | Comm=0.5862s (4.5%) | SSE=1.584590e+08
+  P=  2 | Mode=packed   | Total=13.6815s | Comm=0.0993s (0.7%) | SSE=1.584590e+08
+  P=  4 | Mode=separate | Total=6.8935s | Comm=0.3929s (5.7%) | SSE=1.584590e+08
+  P=  4 | Mode=packed   | Total=7.1715s | Comm=0.7708s (10.7%) | SSE=1.584590e+08
+  P=  8 | Mode=separate | Total=4.6781s | Comm=1.5610s (33.4%) | SSE=1.584590e+08
+  P=  8 | Mode=packed   | Total=3.8375s | Comm=0.6041s (15.7%) | SSE=1.584590e+08
+  P= 16 | Mode=separate | Total=2.2672s | Comm=0.6877s (30.3%) | SSE=1.584590e+08
+  P= 16 | Mode=packed   | Total=2.3284s | Comm=0.7548s (32.4%) | SSE=1.584590e+08
+  P= 32 | Mode=separate | Total=1.2995s | Comm=0.4845s (37.3%) | SSE=1.584590e+08
+  P= 32 | Mode=packed   | Total=1.1664s | Comm=0.3738s (32.1%) | SSE=1.584590e+08
+  P= 64 | Mode=separate | Total=0.6458s | Comm=0.1597s (24.7%) | SSE=1.584590e+08
+  P= 64 | Mode=packed   | Total=0.6527s | Comm=0.1696s (26.0%) | SSE=1.584590e+08
+
+========================================================================================
+  Step 2C: Pure MPI Weak Scaling (Fixed N_per_rank=200,000 pts/rank, d=28, K=8, 30 Iters)
+========================================================================================
+Ranks (P) | Total Points N | Total (s) | Comp (s) | Comm (s) | Comm % | Weak Efficiency |    Throughput
+----------------------------------------------------------------------------------------------------
+        1 |        200,000 |    0.2692 |   0.2691 |   0.0000 |   0.0% |          100.0% |    22.28 M/s
+        2 |        400,000 |    0.4288 |   0.4279 |   0.0071 |   1.7% |           62.8% |    27.99 M/s
+        4 |        800,000 |    0.4306 |   0.4299 |   0.1534 |  35.6% |           62.5% |    55.74 M/s
+        8 |      1,600,000 |    0.4280 |   0.4274 |   0.1489 |  34.8% |           62.9% |   112.16 M/s
+       16 |      3,200,000 |    0.4343 |   0.4320 |   0.1584 |  36.5% |           62.0% |   221.05 M/s
+       32 |      6,400,000 |    0.5657 |   0.5647 |   0.2856 |  50.5% |           47.6% |   339.40 M/s
+       64 |     12,800,000 |    0.4814 |   0.4583 |   0.1400 |  29.1% |           55.9% |   797.72 M/s
+
+Saved MPI scaling results to results/mpi_strong_scaling.csv, results/mpi_allreduce_comparison.csv, and results/mpi_weak_scaling.csv.
+[Step 5] Running Hybrid MPI + OpenMP Scaling (up to 72 cores)...
+=============================================================================================
+  Step 3A: OpenMP Parallel Design Decisions (N=11,000,000, P=1 Rank, T=4 Threads, K=8, 50 Iters)
+=============================================================================================
+ Accumulation Mode |   Schedule | Total (s) | Avg Iter (ms) |     Throughput | Max Err vs Serial
+--------------------------------------------------------------------------------------------
+           private |     static |   13.8990 |        277.98 |     39.57 M/s |         0.000e+00
+           private |    dynamic |   12.0817 |        241.63 |     45.52 M/s |         0.000e+00
+           private |     guided |   12.1257 |        242.51 |     45.36 M/s |         0.000e+00
+            atomic |     static |  120.9895 |       2419.79 |      4.55 M/s |         0.000e+00
+private_standalone |     static |   18.9681 |        379.36 |     29.00 M/s |         0.000e+00
+
+=============================================================================================
+  Step 3B: Hybrid MPI Ranks (P) x OpenMP Threads (T) Scaling (N=11,000,000, K=8, 50 Iters)
+=============================================================================================
+Total Cores | MPI (P) | OMP (T) | Total (s) | Comp (s) | Comm (s) | Speedup | Efficiency |    Max Err
+------------------------------------------------------------------------------------------------
+          1 |       1 |       1 |   30.4406 |  30.4400 |   0.0004 |   1.00x |     100.0% |   0.00e+00
+          8 |       1 |       8 |    8.0859 |   8.0854 |   0.0003 |   3.76x |      47.1% |   0.00e+00
+          8 |       8 |       1 |    5.1831 |   4.8399 |   1.6477 |   5.87x |      73.4% |   0.00e+00
+         16 |       1 |      16 |    3.9036 |   3.9032 |   0.0002 |   7.80x |      48.7% |   0.00e+00
+         16 |       2 |       8 |    5.2129 |   5.2083 |   0.3604 |   5.84x |      36.5% |   0.00e+00
+         16 |       4 |       4 |    5.2580 |   5.1524 |   1.6695 |   5.79x |      36.2% |   0.00e+00
+         16 |       8 |       2 |    5.5221 |   5.4739 |   2.0869 |   5.51x |      34.5% |   0.00e+00
+         16 |      16 |       1 |    2.3688 |   2.3016 |   0.5979 |  12.85x |      80.3% |   0.00e+00
+         36 |       1 |      36 |    2.0054 |   2.0047 |   0.0001 |  15.18x |      42.2% |   0.00e+00
+         36 |       2 |      18 |    3.2785 |   3.2757 |   0.2230 |   9.28x |      25.8% |   0.00e+00
+         36 |       4 |       9 |    2.2838 |   2.1855 |   0.1718 |  13.33x |      37.0% |   0.00e+00
+         36 |       9 |       4 |    2.7998 |   2.7953 |   1.3415 |  10.87x |      30.2% |   0.00e+00
+         36 |      18 |       2 |    2.4851 |   2.4839 |   1.2417 |  12.25x |      34.0% |   0.00e+00
+         36 |      36 |       1 |    1.2468 |   1.1508 |   0.4145 |  24.41x |      67.8% |   0.00e+00
+         72 |       1 |      72 |    1.4163 |   1.4159 |   0.0002 |  21.49x |      29.9% |   0.00e+00
+         72 |       2 |      36 |    1.8289 |   1.8239 |   0.7139 |  16.64x |      23.1% |   0.00e+00
+         72 |       4 |      18 |    1.8984 |   1.8962 |   0.4174 |  16.03x |      22.3% |   0.00e+00
+         72 |       8 |       9 |    1.5056 |   1.5019 |   0.4400 |  20.22x |      28.1% |   0.00e+00
+         72 |      18 |       4 |    1.4337 |   1.4271 |   0.5184 |  21.23x |      29.5% |   0.00e+00
+         72 |      36 |       2 |    1.3460 |   1.3232 |   0.4928 |  22.62x |      31.4% |   0.00e+00
+         72 |      72 |       1 |    0.6243 |   0.6202 |   0.1211 |  48.76x |      67.7% |   0.00e+00
+
+Saved benchmark CSV results in results/.
+==================================================================
+  Vanda CPU Benchmark Suite Complete! CSVs saved in results/      
+==================================================================

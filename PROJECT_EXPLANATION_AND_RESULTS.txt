@@ -22,8 +22,8 @@ On NUS Vanda (`scripts/prepare_higgs_data.py --all`):
                               2.464 GB IEEE-754 doubles in RAM).
   * `data/higgs_labels.txt` : 11,000,000 binary ground-truth labels (0 or 1).
   * `data/higgs_clean.csv.bin`: Atomic binary cache (`KMEANSB1` header + byte-size
-                              guard) created on first CSV parse (8.32 s load),
-                              delivering >30x faster multi-rank loading with
+                              guard) created on first CSV parse (47.95 s parse),
+                              eliminating CSV overhead across multi-rank runs with
                               bitwise-identical doubles (`diff -s` verified).
 
 Note on Local Development Data (`data/` in local workspace):
@@ -39,7 +39,7 @@ Note on Local Development Data (`data/` in local workspace):
   1. `src/kmeans_serial.cpp`:
      1-core C++17 Lloyd's K-Means baseline (`results/centroids_serial.txt`) +
      post-convergence UCI HIGGS signal/background cluster analysis across all
-     11,000,000 events (`kmeans_cpu_benchmarks.o1563432`).
+     11,000,000 events (`kmeans_cpu_benchmarks.o1565343`).
   2. `src/kmeans_mpi.cpp`:
      Pure MPI distributed-memory 1D row-block decomposition (`MPI_Scatterv` +
      distributed parallel I/O `-io parallel`), comparing 3-call separate
@@ -61,53 +61,53 @@ Note on Local Development Data (`data/` in local workspace):
 3. MEASURED NUS VANDA BENCHMARK RESULTS (ALL N = 11,000,000 HIGGS EVENTS)
 --------------------------------------------------------------------------------
 Verbatim PBS logs in repo root:
-  * CPU log: `kmeans_cpu_benchmarks.o1563432` (Node CN-111: 72-core Xeon 8452Y)
-  * GPU log: `kmeans_gpu_benchmark.o1563433`  (Node GN-A40-044: NVIDIA A40 48 GB)
+  * CPU log: `kmeans_cpu_benchmarks.o1565343` (Node CN-048: 72-core Xeon 8452Y)
+  * GPU log: `kmeans_gpu_benchmark.o1564235`  (Node GN-A40-023: NVIDIA A40 48 GB)
 
-A. 1-CORE SERIAL BASELINE & COMPLEXITY SCALING (CN-111)
-  * 50-Iter Full Baseline (K=8, d=28): 49.0870 s (981.74 ms/iter, 11.20 M pts/s,
+A. 1-CORE SERIAL BASELINE & COMPLEXITY SCALING (CN-048)
+  * 50-Iter Full Baseline (K=8, d=28): 47.1513 s (943.03 ms/iter, 11.66 M pts/s,
     crossed tol=1e-5 at iter 47, Final SSE = 1.584590e+08)
   * Scaling vs. N (`results/serial_scaling_N.csv`, 30 iters, K=8):
-    100k: 0.4079s (7.35 M/s) | 500k: 1.2805s (11.71 M/s) | 1M: 2.7431s (10.94 M/s)
-    2.5M: 6.4020s (11.72 M/s) | 5M: 12.8151s (11.70 M/s) | 11M: 28.0452s (11.77 M/s)
+    100k: 0.4091s (7.33 M/s) | 500k: 1.2828s (11.69 M/s) | 1M: 3.7381s (8.03 M/s)
+    2.5M: 8.0281s (9.34 M/s) | 5M: 14.7397s (10.18 M/s) | 11M: 30.0148s (10.99 M/s)
   * Scaling vs. K (`results/serial_scaling_K.csv`, N=11M, 30 iters):
-    K=2: 10.5133s (31.39 M/s) | K=4: 15.8274s (20.85 M/s) | K=8: 28.1074s (11.74 M/s)
-    K=16: 60.0651s (5.49 M/s) | K=32: 112.5194s (2.93 M/s)
+    K=2: 10.5269s (31.35 M/s) | K=4: 15.8202s (20.86 M/s) | K=8: 28.1127s (11.74 M/s)
+    K=16: 60.5340s (5.45 M/s) | K=32: 113.1340s (2.92 M/s)
 
 B. PURE MPI STRONG SCALING (P = 1..64, N = 11,000,000, 50 Iters, `mpi_strong_scaling.csv`)
-  P= 1 | 31.4583 s | Comm: 0.0005 s ( 0.0%) |  1.00x (100.0%) |  17.48 M/s | Err 0.000e+00
-  P= 2 | 14.4035 s | Comm: 1.3279 s ( 9.2%) |  2.18x (109.2%) |  38.19 M/s | Err 0.000e+00
-  P= 4 |  7.8956 s | Comm: 1.2932 s (16.4%) |  3.98x ( 99.6%) |  69.66 M/s | Err 0.000e+00
-  P= 8 |  3.9428 s | Comm: 0.7755 s (19.7%) |  7.98x ( 99.7%) | 139.49 M/s | Err 0.000e+00
-  P=16 |  2.4039 s | Comm: 0.7380 s (30.7%) | 13.09x ( 81.8%) | 228.80 M/s | Err 0.000e+00
-  P=32 |  1.3659 s | Comm: 0.5703 s (41.8%) | 23.03x ( 72.0%) | 402.68 M/s | Err 0.000e+00
-  P=64 |  0.6211 s | Comm: 0.1323 s (21.3%) | 50.65x ( 79.1%) | 885.49 M/s | Err 0.000e+00
+  P= 1 | 26.7964 s | Comm: 0.0006 s ( 0.0%) |  1.00x (100.0%) |  20.53 M/s | Err 0.000e+00
+  P= 2 | 13.8943 s | Comm: 0.6830 s ( 4.9%) |  1.93x ( 96.4%) |  39.58 M/s | Err 0.000e+00
+  P= 4 |  7.3715 s | Comm: 0.4959 s ( 6.7%) |  3.64x ( 90.9%) |  74.61 M/s | Err 0.000e+00
+  P= 8 |  4.6739 s | Comm: 1.5139 s (32.4%) |  5.73x ( 71.7%) | 117.67 M/s | Err 0.000e+00
+  P=16 |  2.2648 s | Comm: 0.6844 s (30.2%) | 11.83x ( 73.9%) | 242.84 M/s | Err 0.000e+00
+  P=32 |  1.4536 s | Comm: 0.6572 s (45.2%) | 18.43x ( 57.6%) | 378.37 M/s | Err 0.000e+00
+  P=64 |  0.6473 s | Comm: 0.1629 s (25.2%) | 41.40x ( 64.7%) | 849.74 M/s | Err 0.000e+00
   All 7 runs achieve identical Final SSE = 1.584590e+08 and Max Abs Err = 0.000e+00.
-  Packed Allreduce vs. Separate cut P=8 comm wait from 1.6457s to 0.6824s (2.41x).
+  Packed Allreduce vs. Separate cut P=8 comm wait from 1.5610s to 0.6041s (2.58x).
 
 C. PURE MPI WEAK SCALING (`mpi_weak_scaling.csv`, 200,000 pts/rank, 30 Iters)
-  P=1 (200k): 0.2983s (100.0%, 20.11 M/s) -> P=64 (12.8M): 0.5491s (54.3%, 699.36 M/s)
+  P=1 (200k): 0.2692s (100.0%, 22.28 M/s) -> P=64 (12.8M): 0.4814s (55.9%, 797.72 M/s)
 
 D. HYBRID MPI + OPENMP DESIGN & 72-CORE NUMA GRID (N = 11,000,000, 50 Iters)
   * Design choices (`omp_design_choices.csv`, P=1, T=4):
-    - private + guided : 11.5415 s (230.83 ms/iter, 47.65 M/s) -> 13.52x faster than atomic!
-    - private + dynamic: 11.5427 s (230.85 ms/iter, 47.65 M/s)
-    - private + static : 14.1680 s (283.36 ms/iter, 38.82 M/s)
-    - standalone static: 14.6160 s (292.32 ms/iter, 37.63 M/s)
-    - atomic  + static : 156.0935 s (3121.87 ms/iter, 3.52 M/s)
-  * Key 72-core grid points (`hybrid_mpi_omp_grid.csv`, baseline 1x1 = 29.3235 s):
-    - 1x72 (Pure OMP, cross-NUMA): 2.0441 s (14.35x, 269.07 M/s)
-    - 2x36 (NUMA-aligned Hybrid) : 1.3244 s (22.14x, 415.29 M/s, only 3.3% comm -> 35.2% faster than 1x72)
-    - 72x1 (Flat MPI, 72 cores)  : 0.6448 s (45.48x, 853.03 M/s -> 76.13x faster than 49.0870s serial)
+    - private + dynamic: 12.0817 s (241.63 ms/iter, 45.52 M/s) -> 10.01x faster than atomic!
+    - private + guided : 12.1257 s (242.51 ms/iter, 45.36 M/s)
+    - private + static : 13.8990 s (277.98 ms/iter, 39.57 M/s)
+    - standalone static: 18.9681 s (379.36 ms/iter, 29.00 M/s)
+    - atomic  + static : 120.9895 s (2419.79 ms/iter, 4.55 M/s)
+  * Key 72-core grid points (`hybrid_mpi_omp_grid.csv`, baseline 1x1 = 30.4406 s):
+    - 1x72 (Pinned Pure OMP)     : 1.4163 s (21.49x, 388.33 M/s, 0.0% comm)
+    - 2x36 (Unpinned Hybrid)     : 1.8289 s (16.64x, 300.72 M/s, 39.0% barrier wait skew)
+    - 72x1 (Flat MPI, 72 cores)  : 0.6243 s (48.76x, 880.94 M/s -> 75.53x faster than 47.1513s serial)
 
 E. HARDWARE GPU ACCELERATION: VANDA NVIDIA A40 (11M) & APPLE M5 METAL (597k)
   * Vanda NVIDIA A40 (`gpu_benchmark.csv`, N=11M, 30 Iters):
-    - K= 8: 1C=17.3726s | 4C= 5.1064s | CUDA= 3.0461s (5.70x vs 1C, 108.33 M/s, RMSE=1.509e-12, SSE=1.584590e+08)
-    - K=16: 1C=32.7197s | 4C=10.1117s | CUDA= 5.7795s (5.66x vs 1C,  57.10 M/s, RMSE=1.521e-12, SSE=1.441739e+08)
-    - K=32: 1C=58.3357s | 4C=16.0496s | CUDA=12.4475s (4.69x vs 1C,  26.51 M/s, RMSE=1.562e-12, SSE=1.318415e+08)
-  * Vanda 50-Iter GPU Backends (`kmeans_gpu_benchmark.o1563433`, N=11M, K=8):
-    - Native CUDA (`__shared__`) : 5.0759 s (108.36 M pts/s, 9.67x vs serial 49.0870s, 3.10x vs -mp=gpu)
-    - OpenMP GPU Target -mp=gpu  : 15.7554 s (34.91 M pts/s, 3.12x vs serial 49.0870s)
+    - K= 8: 1C=21.7097s | 4C= 6.1889s | CUDA= 3.0485s (7.12x vs 1C, 108.25 M/s, RMSE=1.509e-12, SSE=1.584590e+08)
+    - K=16: 1C=35.9229s | 4C=12.2053s | CUDA= 5.7699s (6.23x vs 1C,  57.19 M/s, RMSE=1.521e-12, SSE=1.441739e+08)
+    - K=32: 1C=61.8688s | 4C=17.0752s | CUDA=12.4459s (4.97x vs 1C,  26.51 M/s, RMSE=1.562e-12, SSE=1.318415e+08)
+  * Vanda 50-Iter GPU Backends (`kmeans_gpu_benchmark.o1564235`, N=11M, K=8):
+    - Native CUDA (`__shared__`) : 5.0769 s (108.33 M pts/s, 9.29x vs CN-048 47.1513s / 9.50x vs GN-A40-023 host 48.2479s, 3.33x vs -mp=gpu, PASSED)
+    - OpenMP GPU Target -mp=gpu  : 16.9227 s (32.50 M pts/s, 2.79x vs CN-048 47.1513s, PASSED)
   * Apple M5 Metal GPU (`gpu_benchmark_apple_metal.csv`, N=597,638, 30 Iters):
     - K=8: 0.1189s (4.76x) | K=16: 0.1444s (6.57x) | K=32: 0.2090s (8.10x vs 1C 1.6926s)
 
