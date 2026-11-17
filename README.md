@@ -1,7 +1,7 @@
 # DSA5208 Project 3: Scalable Hybrid Parallel K-Means Clustering (`MPI + OpenMP + CUDA + Metal`)
 
 **Course:** DSA5208 — Scalable Distributed Computing for Data Science (NUS)  
-**Authors:** Nithillen Jayaseelan (`A0351473E`), Ashwin Sasikumar (`A0354333J`), Amitej Singh Datta (`A0352547Y`)  
+**Authors:** Nithillen Jayaseelan (`A0351473E`), Ashwin Sasikumar (`A0354333J`) , Amitej Singh Datta (`A0352547Y`)  
 **Platforms:** NUS Vanda Supercomputer (`CN-048`: Dual-Socket 72-Core Xeon Platinum 8452Y; `GN-A40-023`: NVIDIA A40 48 GB GPU) & Apple M5 (Local Verification / Metal Shader)  
 **Algorithm:** Lloyd's K-Means Clustering (Iterative Expectation–Maximization)  
 **Dataset:** Full [UCI Machine Learning Repository — HIGGS Boson Dataset (ID #280)](https://archive.ics.uci.edu/dataset/280/higgs) ($N = 11,000,000$ collision events $\times$ $d = 28$ continuous physics features $= 308,000,000$ IEEE-754 doubles, $2.464\text{ GB}$ in RAM) + Multi-Million Point Synthetic Gaussian Generator for Weak Scaling up to $12,800,000$ Points.
