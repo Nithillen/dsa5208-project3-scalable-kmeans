@@ -9,8 +9,8 @@
 
 ## Step 1: Streaming the Complete 11,000,000-Row UCI HIGGS Dataset (`scripts/prepare_higgs_data.py`)
 
-`HIGGS.csv.gz` (`2.62 GB` compressed, `7.48 GB` uncompressed, `11,000,000` rows $\times$ `29` columns) is streamed over HTTP, decompressed on the fly via `zlib`, and written as two clean files (`0` skipped rows):
-1. `data/higgs_clean.csv` — `11,000,000` rows $\times$ `28` continuous physics features (`308,000,000` IEEE-754 doubles $= 2.464\text{ GB}$ in RAM).
+`HIGGS.csv.gz` (`2.62 GiB` compressed, `7.48 GiB` uncompressed, `11,000,000` rows $\times$ `29` columns) is streamed over HTTP, decompressed on the fly via `zlib`, and written as two clean files (`0` skipped rows):
+1. `data/higgs_clean.csv` — `11,000,000` rows $\times$ `28` continuous physics features (`308,000,000` IEEE-754 doubles $= 2.464\text{ GB}$ / $2.295\text{ GiB}$ in RAM).
 2. `data/higgs_labels.txt` — `11,000,000` binary ground-truth class labels (`1` = Higgs boson signal, `0` = background), used strictly **after** clustering for cluster purity analysis.
 
 ```bash
@@ -18,7 +18,7 @@ python3 scripts/prepare_higgs_data.py --all
 wc -l data/higgs_clean.csv data/higgs_labels.txt
 ```
 
-To eliminate redundant multi-second ASCII parsing across dozens of benchmark runs on 11M rows, `src/kmeans_common.hpp` atomically creates a binary cache `data/higgs_clean.csv.bin` (`KMEANSB1` header + source CSV byte-size verification) on the first CSV load (`47.95 s` CSV parse on Vanda `CN-048`), bypassing CSV parsing across subsequent multi-rank loads while guaranteeing bitwise parity (`diff -s` verified).
+To eliminate redundant multi-second ASCII parsing across dozens of benchmark runs on 11M rows, `src/kmeans_common.hpp` atomically creates a binary cache `data/higgs_clean.csv.bin` (`KMEANSB1` header + source CSV byte-size verification) on the first CSV load (`47.95 s` CSV parse on Vanda `CN-048`), bypassing CSV parsing across subsequent multi-rank loads while preserving exact IEEE-754 doubles.
 
 ---
 
@@ -33,7 +33,7 @@ make all
 python3 scripts/test_correctness.py
 ```
 
-All 16 tests verify initialization parity, `MPI_Scatterv` vs. distributed parallel I/O (`-io parallel`), packed vs. separate `MPI_Allreduce`, OpenMP `private` vs. `atomic`, large-$K$ shared-memory bounds fallback ($K=40, d=32 \implies K d = 1280 > 1024$), and Apple Metal GPU accuracy (`MaxErr <= 1.000e-12` on FP64 HIGGS).
+All 16 tests verify initialization parity, `MPI_Scatterv` vs. distributed parallel I/O (`-io parallel`), packed vs. separate `MPI_Allreduce`, OpenMP `private` vs. `atomic`, large-$K$ shared-memory bounds fallback ($K=40, d=32 \implies K d = 1280 > 1024$), and Apple Metal GPU accuracy (`tol = 1e-3`, observing `MaxErr <= 1.000e-12` on Suite 2 `N=50k` HIGGS via FP32 distance evaluations + FP64 host accumulation; full `N=597,638` Metal runs achieve FP32 `RMSE = 1.029e-04–5.296e-04`).
 
 ---
 
@@ -63,6 +63,6 @@ qsub scripts/vanda_gpu_benchmarks.pbs   # Output saved verbatim: kmeans_gpu_benc
 ## Step 4: Plotting Figures & Building the Final PDF Report
 
 ```bash
-MPLCONFIGDIR=/tmp /tmp/report_venv/bin/python3 scripts/generate_report_figures.py
+python3 scripts/generate_report_figures.py
 typst compile report/DSA5208_Project3_Report.typ DSA5208_Project3_Report.pdf
 ```

@@ -65,7 +65,7 @@ def generate_fig1_serial_scaling():
     ax1.loglog(N_vals, ideal_n, "--", color="#d95f02", linewidth=1.6,
                label="Theoretical Linear O(N) Reference")
 
-    offsets_n = [(20, 6), (-18, 8), (20, -14), (-18, 9), (-18, 9), (-22, 9)]
+    offsets_n = [(-16, 12), (-22, 10), (22, -16), (-22, 10), (-22, 10), (-24, 10)]
     for idx, (n, t) in enumerate(zip(N_vals, T_n)):
         ox, oy = offsets_n[idx] if idx < len(offsets_n) else (0, 10)
         lbl = f"{t:.4f}s\n(11M)" if n == 11000000 else f"{t:.4f}s\n({n//1000}k)"
@@ -86,7 +86,7 @@ def generate_fig1_serial_scaling():
     ax2.loglog(K_vals, ideal_k, "--", color="#d95f02", linewidth=1.6,
                label="Theoretical Linear O(K) Slope")
 
-    offsets_k = [(18, -16), (18, -16), (18, -16), (18, -16), (-18, -22)]
+    offsets_k = [(18, -16), (18, -16), (18, -16), (20, -18), (22, -20)]
     for idx, (k, t) in enumerate(zip(K_vals, T_k)):
         ox, oy = offsets_k[idx] if idx < len(offsets_k) else (0, 10)
         ax2.annotate(f"K={k}\n{t:.4f}s", (k, t), textcoords="offset points",
@@ -94,6 +94,7 @@ def generate_fig1_serial_scaling():
 
     ax2.set_xscale("log", base=2)
     ax2.set_xticks(K_vals)
+    ax2.set_xlim(1.5, 52)
     ax2.get_xaxis().set_major_formatter(ScalarFormatter())
     ax2.set_title("(b) Serial Runtime vs. Cluster Count K (Log-Log)\n[Full UCI HIGGS: N = 11,000,000, d = 28, 30 Iterations]")
     ax2.set_xlabel("Number of Clusters K [Log2 Scale]")
@@ -151,7 +152,7 @@ def generate_fig2_mpi_strong_scaling():
     ax2.loglog(P_meas, S_meas, "o-", color="#117864", linewidth=2.4, markersize=7.5,
                label="Measured Vanda Speedup S(P) (P=1..64)")
 
-    offsets_s = {1: (22, 6), 2: (-14, 10), 4: (-16, 9), 8: (-18, 9), 16: (22, -16), 32: (24, -14), 64: (-22, 8)}
+    offsets_s = {1: (24, -18), 2: (-20, 12), 4: (-22, 12), 8: (-26, 11), 16: (24, -18), 32: (24, -18), 64: (-30, 12)}
     for p, s, e in zip(P_meas, S_meas, E_meas):
         ox, oy = offsets_s.get(p, (0, 8))
         ax2.annotate(f"{s:.2f}x\n({e:.1f}%)", (p, s), textcoords="offset points",
@@ -221,7 +222,7 @@ def generate_fig3_mpi_weak_scaling():
     ax2.loglog(P_meas, Thr, "o-", color="#117864", linewidth=2.3, markersize=7.2,
                label="Measured Aggregate Throughput (M pts/s)")
 
-    offs_th = {1: (12, 8), 2: (-14, 10), 4: (18, -18), 8: (-18, 10), 16: (20, -18), 32: (22, -18), 64: (0, -24)}
+    offs_th = {1: (16, -22), 2: (14, -22), 4: (14, -22), 8: (14, -22), 16: (14, -22), 32: (14, -22), 64: (0, -26)}
     for p, th in zip(P_meas, Thr):
         ox, oy = offs_th.get(p, (0, 10))
         ax2.annotate(f"{th:.2f}\nM/s", (p, th), textcoords="offset points",
@@ -316,13 +317,18 @@ def generate_fig5_hybrid_mpi_omp_grid():
     ax1.loglog([x[0] for x in pure_mpi], [x[1] for x in pure_mpi], "s-", color="#117864",
                linewidth=2.4, markersize=7.2, label="Flat MPI Inside Node (P=1..72, T=1)")
 
+    omp_offsets = {1: (12, 8), 8: (0, 10), 16: (22, 2), 36: (22, 2), 72: (0, -19)}
+    lbl_bbox = dict(boxstyle="round,pad=0.12", facecolor="white", edgecolor="none", alpha=0.88)
     for c, t in pure_omp:
+        ox, oy = omp_offsets.get(c, (0, 10))
         ax1.annotate(f"1x{c}: {t:.2f}s", (c, t), textcoords="offset points",
-                     xytext=(6 if c==1 else 0, 9), ha="center", fontsize=7.2, fontweight="bold", color="#c0392b")
+                     xytext=(ox, oy), ha="center", fontsize=7.2, fontweight="bold",
+                     color="#c0392b", bbox=lbl_bbox)
     for c, t in pure_mpi:
         if c > 1:
             ax1.annotate(f"{c}x1: {t:.2f}s", (c, t), textcoords="offset points",
-                         xytext=(-14 if c in (16, 36, 72) else 0, -16), ha="center", fontsize=7.2, fontweight="bold", color="#117864")
+                         xytext=(-18 if c in (16, 36, 72) else 0, -16), ha="center", fontsize=7.2,
+                         fontweight="bold", color="#117864", bbox=lbl_bbox)
 
     ax1.set_xscale("log", base=2)
     ax1.set_xticks([1, 8, 16, 36, 72])
@@ -433,7 +439,7 @@ def generate_fig6_gpu_scaling():
 
 
 def generate_fig7_higgs_physics():
-    # Exact 11,000,000-row HIGGS Boson Physical Cluster Analysis from kmeans_cpu_benchmarks.o1563432
+    # Exact 11,000,000-row HIGGS Boson Physical Cluster Analysis from kmeans_cpu_benchmarks.o1565343
     clusters = ["C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"]
     events   = [1560788, 1729399, 1120799, 1732201, 1121982, 923472, 1263796, 1547563]
     sig_pct  = [53.90, 52.77, 52.57, 52.64, 52.46, 49.72, 57.56, 51.62]
@@ -452,17 +458,23 @@ def generate_fig7_higgs_physics():
                 label="Full 11M Dataset Mean Signal Rate (52.99%)")
 
     for bar, s, ev in zip(bars, sig_pct, events):
-        ax1.annotate(f"{s:.2f}%",
-                     (bar.get_x() + bar.get_width() / 2, s),
-                     textcoords="offset points", xytext=(0, 5),
-                     ha="center", fontsize=8.0, fontweight="bold")
+        if 52.0 <= s <= 53.3:
+            ax1.annotate(f"{s:.2f}%",
+                         (bar.get_x() + bar.get_width() / 2, s),
+                         textcoords="offset points", xytext=(0, -14),
+                         ha="center", fontsize=8.0, fontweight="bold", color="white")
+        else:
+            ax1.annotate(f"{s:.2f}%",
+                         (bar.get_x() + bar.get_width() / 2, s),
+                         textcoords="offset points", xytext=(0, 5),
+                         ha="center", fontsize=8.0, fontweight="bold", color="black")
         ax1.text(bar.get_x() + bar.get_width() / 2, 48.2, f"{ev/1e6:.2f}M",
                  ha="center", va="bottom", fontsize=7.4, fontweight="bold", color="white")
 
     ax1.set_title("(a) True Higgs Boson Signal Purity Across K=8 Clusters\n[Unsupervised Clustering on Full N = 11,000,000 Collision Events]")
     ax1.set_xlabel("Discovered K-Means Cluster ID")
     ax1.set_ylabel("True Higgs Signal Percentage (%)")
-    ax1.set_ylim(47.5, 59.8)
+    ax1.set_ylim(47.5, 60.4)
     ax1.legend(loc="upper right")
 
     # Panel B: High-Level Invariant Mass Features per Cluster

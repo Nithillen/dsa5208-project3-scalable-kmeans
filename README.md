@@ -36,11 +36,10 @@ project3_scalable/
 ├── kmeans_cpu_benchmarks.o1565343         # Verbatim Vanda CN-048 (72-core Xeon) 11M CPU log (ALL PASSED)
 ├── kmeans_gpu_benchmark.o1564235          # Verbatim Vanda GN-A40-023 (NVIDIA A40) 11M GPU log (ALL PASSED)
 ├── results/
-│   ├── centroids_serial.txt               # Converged 8 x 28 11M reference centroids
-│   ├── centroids_mpi.txt                  # Converged 8 x 28 Pure MPI centroids
-│   ├── centroids_omp.txt                  # Converged 8 x 28 Hybrid MPI+OpenMP centroids
-│   ├── centroids_omp_gpu.txt              # Converged 8 x 28 OpenMP -mp=gpu centroids
-│   ├── centroids_cuda.txt                 # Converged 8 x 28 NVIDIA A40 CUDA centroids
+│   ├── centroids_serial.txt               # Serial scaling final output (32 x 28 from K=32 11M run)
+│   ├── centroids_mpi.txt                  # Pure MPI weak-scaling final output (8 x 28 from 12.8M run)
+│   ├── centroids_omp.txt                  # Converged 8 x 28 11M Hybrid MPI+OpenMP centroids
+│   ├── centroids_metal.txt                # Converged 32 x 28 Apple M5 Metal centroids (N=597,638)
 │   ├── serial_scaling_N.csv               # Vanda 1-core serial scaling vs. N (100k -> 11M)
 │   ├── serial_scaling_K.csv               # Vanda 1-core serial scaling vs. K (2 -> 32 on 11M)
 │   ├── mpi_strong_scaling.csv             # Vanda Pure MPI strong scaling (P=1..64 on 11M)
@@ -62,6 +61,8 @@ project3_scalable/
 │   ├── generate_report_figures.py         # Generates fig1..fig7 from results/*.csv
 │   ├── vanda_cpu_benchmarks.pbs           # Vanda 72-core CPU PBS job script (11M rows)
 │   ├── vanda_gpu_benchmarks.pbs           # Vanda NVIDIA A40 GPU PBS job script (11M rows)
+│   ├── vanda_full_benchmark.pbs           # Early combined Vanda CPU benchmark script
+│   ├── vanda_hybrid_gpu.pbs               # Standalone Vanda hybrid GPU test script
 │   └── vanda_mpi_256cores.pbs             # Optional multi-node Vanda 256-core Pure MPI script
 └── src/
     ├── kmeans_common.hpp                  # Fast strtod CSV loader, atomic .bin cache, SSE validator
@@ -126,7 +127,7 @@ python3 scripts/test_correctness.py
 qsub scripts/vanda_cpu_benchmarks.pbs
 qsub scripts/vanda_gpu_benchmarks.pbs
 
-# 4. Regenerate all 7 figures and compile the PDF report locally
-/tmp/report_venv/bin/python3 scripts/generate_report_figures.py
+# 4. Regenerate all 7 figures and compile the PDF report locally (requires matplotlib)
+python3 scripts/generate_report_figures.py
 typst compile report/DSA5208_Project3_Report.typ DSA5208_Project3_Report.pdf
 ```

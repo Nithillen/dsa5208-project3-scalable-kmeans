@@ -1,6 +1,7 @@
 CXX ?= clang++
 MPICXX ?= $(shell command -v mpicxx 2>/dev/null || echo /opt/homebrew/bin/mpicxx)
 NVCC ?= $(shell command -v nvcc 2>/dev/null)
+NVHPC ?= $(shell command -v nvc++ 2>/dev/null)
 CXXFLAGS = -O3 -std=c++17 -Wall -Wextra
 
 UNAME_S := $(shell uname -s)
@@ -19,7 +20,13 @@ else
     CUDA_TARGET =
 endif
 
-TARGETS = bin/kmeans_serial bin/kmeans_mpi bin/kmeans_omp bin/kmeans_omp_standalone $(METAL_TARGET) $(CUDA_TARGET)
+ifneq ($(NVHPC),)
+    OMP_GPU_TARGET = bin/kmeans_omp_gpu
+else
+    OMP_GPU_TARGET =
+endif
+
+TARGETS = bin/kmeans_serial bin/kmeans_mpi bin/kmeans_omp bin/kmeans_omp_standalone $(METAL_TARGET) $(CUDA_TARGET) $(OMP_GPU_TARGET)
 
 all: $(TARGETS)
 
@@ -46,6 +53,10 @@ bin/kmeans_metal_gpu: src/kmeans_metal_gpu.mm src/kmeans_common.hpp
 bin/kmeans_cuda: src/kmeans_cuda.cu src/kmeans_common.hpp
 	mkdir -p bin results
 	$(NVCC) -O3 -std=c++17 -arch=native -ccbin $(MPICXX) $< -o $@ 2>/dev/null || $(NVCC) -O3 -std=c++17 -ccbin $(MPICXX) $< -o $@
+
+bin/kmeans_omp_gpu: src/kmeans_omp.cpp src/kmeans_common.hpp
+	mkdir -p bin results
+	OMPI_CXX=$(NVHPC) $(MPICXX) -O3 -std=c++17 -mp=gpu $< -o $@
 
 test: all
 	python3 scripts/test_correctness.py

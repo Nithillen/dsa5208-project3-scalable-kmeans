@@ -46,7 +46,12 @@ def run_mpi(np, args, oversubscribe=False):
     final_sse = float(sse_match.group(1)) if sse_match else 0.0
 
     err_match = re.search(r"Max Abs Error\s*:\s*([\d.eE+-]+)", out)
-    max_err = float(err_match.group(1)) if err_match else 0.0
+    if err_match:
+        max_err = float(err_match.group(1))
+    elif "-r" in args:
+        raise RuntimeError(f"Expected validation output when '-r' passed to kmeans_mpi, got:\n{out[-500:]}")
+    else:
+        max_err = 0.0
 
     n_match = re.search(r"Total Points\s*:\s*(\d+)", out)
     n_total = int(n_match.group(1)) if n_match else get_total_rows()
@@ -150,7 +155,7 @@ def main():
 
         for p in ranks_list:
             tot_s, comp_s, comm_s, comm_pct, iter_ms, thr, sse, _, _ = run_mpi(
-                p, ["-w", "-n", str(n_per_rank_weak), "-d", "28", "-k", "8", "-m", "30", "-t", "0.0"],
+                p, ["-w", "-n", str(n_per_rank_weak), "-d", "28", "-k", "8", "-m", "30", "-t", "0.0", "-o", "/tmp/kmeans_mpi_weak_tmp.txt"],
                 oversubscribe=args.oversubscribe,
             )
             if t1_weak is None:

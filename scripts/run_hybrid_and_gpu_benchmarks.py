@@ -68,7 +68,12 @@ def run_omp(np, threads, accum="private", sched="static", K=8, iters=50,
     sse_match = re.search(r"Final SSE \(WCSS\)\s*:\s*([\d.eE+-]+)", out)
     final_sse = float(sse_match.group(1)) if sse_match else 0.0
     err_match = re.search(r"Max Abs Error\s*:\s*([\d.eE+-]+)", out)
-    max_err = float(err_match.group(1)) if err_match else 0.0
+    if err_match:
+        max_err = float(err_match.group(1))
+    elif ref_file:
+        raise RuntimeError(f"Expected validation output when '-r' passed to kmeans_omp, got:\n{out[-500:]}")
+    else:
+        max_err = 0.0
     return total_s, comp_s, comm_s, comm_pct, avg_iter_ms, throughput, final_sse, max_err
 
 

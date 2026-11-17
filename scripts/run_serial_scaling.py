@@ -95,7 +95,9 @@ def main():
         writer = csv.writer(f)
         writer.writerow(["N", "d", "K", "iterations", "total_floats", "total_time_s", "avg_iter_ms", "throughput_mpts_s"])
         for n in n_values:
-            tot_s, iter_ms, thr, _, _, _ = run_benchmark(N=n, K=k_fixed, max_iters=iters)
+            tot_s, iter_ms, thr, _, _, _ = run_benchmark(
+                N=n, K=k_fixed, max_iters=iters, out_file="/tmp/kmeans_serial_scaling_tmp.txt"
+            )
             writer.writerow([n, 28, k_fixed, iters, n * 28, f"{tot_s:.4f}", f"{iter_ms:.2f}", f"{thr:.2f}"])
             print(f"{n:12,d} | {n*28:14,d} | {tot_s:14.4f} | {iter_ms:13.2f} | {thr:20.2f}")
 
@@ -111,7 +113,9 @@ def main():
         writer = csv.writer(f)
         writer.writerow(["N", "d", "K", "iterations", "dist_evals_per_iter", "total_time_s", "avg_iter_ms", "throughput_mpts_s"])
         for k in k_values:
-            tot_s, iter_ms, thr, _, _, _ = run_benchmark(N=None, K=k, max_iters=iters)
+            tot_s, iter_ms, thr, _, _, _ = run_benchmark(
+                N=None, K=k, max_iters=iters, out_file="/tmp/kmeans_serial_scaling_tmp.txt"
+            )
             writer.writerow([total_rows, 28, k, iters, total_rows * k, f"{tot_s:.4f}", f"{iter_ms:.2f}", f"{thr:.2f}"])
             print(f"{k:12d} | {total_rows*k:15,d} | {tot_s:14.4f} | {iter_ms:13.2f} | {thr:20.2f}")
 
