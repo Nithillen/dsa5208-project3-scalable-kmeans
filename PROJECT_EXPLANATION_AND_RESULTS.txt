@@ -11,20 +11,20 @@ Dataset Source      : https://archive.ics.uci.edu/dataset/280/higgs
 1. FULL 11,000,000-ROW DATASET & TRANSPARENT ATOMIC BINARY CACHE
 --------------------------------------------------------------------------------
 Upstream UCI Archive: `HIGGS.csv.gz`
-  * Compressed download : 2.62 GB (2,816,407,858 bytes)
-  * Uncompressed CSV    : 7.48 GB (11,000,000 rows x 29 columns)
+  * Compressed download : 2.62 GiB (2,816,407,858 bytes)
+  * Uncompressed CSV    : 7.48 GiB (11,000,000 rows x 29 columns)
   * Features (d = 28)   : 21 low-level detector momenta/angles + 7 high-level
                           invariant masses (m_jj, m_jjj, m_lv, m_jlv, m_bb,
                           m_wbb, m_wwbb). Column 0 is the binary signal label.
 
 On NUS Vanda (`scripts/prepare_higgs_data.py --all`):
   * `data/higgs_clean.csv`  : 11,000,000 rows x 28 features (308,000,000 floats,
-                              2.464 GB IEEE-754 doubles in RAM).
+                              2.464 GB [2.295 GiB] IEEE-754 doubles in RAM).
   * `data/higgs_labels.txt` : 11,000,000 binary ground-truth labels (0 or 1).
   * `data/higgs_clean.csv.bin`: Atomic binary cache (`KMEANSB1` header + byte-size
                               guard) created on first CSV parse (47.95 s parse),
                               eliminating CSV overhead across multi-rank runs with
-                              bitwise-identical doubles (`diff -s` verified).
+                              exact IEEE-754 double serialization (header verified).
 
 Note on Local Development Data (`data/` in local workspace):
   * For rapid local correctness CI & Apple M5 Metal testing (`test_correctness.py`
